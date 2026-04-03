@@ -41,6 +41,7 @@ from pension_pro_mcp.tools.projects import (
     uncomplete_task, reassign_task, create_project_from_template,
 )
 from pension_pro_mcp.tools.clients import search_clients, get_client_details, search_contacts
+from pension_pro_mcp.tools.todos import search_todos, get_todo, create_todo, update_todo
 
 
 @mcp.tool()
@@ -186,6 +187,67 @@ async def search_contacts_tool(
     """Search and filter contacts by name or client."""
     client = ctx.request_context.lifespan_context.client
     return await search_contacts(client, name=name, client_id=client_id, limit=limit)
+
+
+@mcp.tool()
+async def search_todos_tool(
+    ctx: Context[ServerSession, AppContext],
+    status: str | None = None,
+    priority: str | None = None,
+    plan_id: int | None = None,
+    project_id: int | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    """Search and filter to-dos by status, priority, plan, or project."""
+    client = ctx.request_context.lifespan_context.client
+    return await search_todos(client, status=status, priority=priority, plan_id=plan_id, project_id=project_id, limit=limit)
+
+
+@mcp.tool()
+async def get_todo_tool(
+    ctx: Context[ServerSession, AppContext],
+    todo_id: int,
+) -> dict:
+    """Get a to-do with its comments."""
+    client = ctx.request_context.lifespan_context.client
+    return await get_todo(client, todo_id=todo_id)
+
+
+@mcp.tool()
+async def create_todo_tool(
+    ctx: Context[ServerSession, AppContext],
+    subject: str,
+    description: str | None = None,
+    priority_id: int | None = None,
+    due_date: str | None = None,
+    status_id: int | None = None,
+    assigned_to_contact_id: int | None = None,
+    plan_id: int | None = None,
+    project_id: int | None = None,
+    contact_id: int | None = None,
+) -> dict:
+    """Create a new to-do, optionally linked to a plan, project, or contact."""
+    client = ctx.request_context.lifespan_context.client
+    return await create_todo(
+        client, subject=subject, description=description, priority_id=priority_id,
+        due_date=due_date, status_id=status_id, assigned_to_contact_id=assigned_to_contact_id,
+        plan_id=plan_id, project_id=project_id, contact_id=contact_id,
+    )
+
+
+@mcp.tool()
+async def update_todo_tool(
+    ctx: Context[ServerSession, AppContext],
+    todo_id: int,
+    subject: str | None = None,
+    description: str | None = None,
+    status_id: int | None = None,
+    priority_id: int | None = None,
+    due_date: str | None = None,
+) -> dict:
+    """Update an existing to-do's subject, description, status, priority, or due date."""
+    client = ctx.request_context.lifespan_context.client
+    return await update_todo(client, todo_id=todo_id, subject=subject, description=description, status_id=status_id, priority_id=priority_id, due_date=due_date)
 
 
 def main() -> None:
