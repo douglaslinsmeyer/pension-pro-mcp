@@ -1,6 +1,8 @@
 """PensionPro API client."""
 
+import json
 import os
+from typing import Any
 
 import httpx
 
@@ -36,3 +38,38 @@ class PensionProClient:
     async def close(self) -> None:
         """Close the underlying HTTP client."""
         await self._http.aclose()
+
+    async def _handle_response(self, response: httpx.Response, endpoint: str) -> Any:
+        """Check response status and return parsed JSON."""
+        if response.status_code >= 400:
+            try:
+                body = response.json()
+                message = body.get("Message", str(body))
+            except Exception:
+                message = response.text or f"HTTP {response.status_code}"
+            raise PensionProError(response.status_code, message, endpoint)
+        return response.json()
+
+    async def get(self, endpoint: str, params: dict[str, str] | None = None) -> Any:
+        """Send a GET request."""
+        response = await self._http.get(endpoint, params=params)
+        return await self._handle_response(response, endpoint)
+
+    async def post(self, endpoint: str, data: dict[str, Any] | None = None) -> Any:
+        """Send a POST request with a JSON body."""
+        content = json.dumps(data).encode() if data is not None else None
+        headers = {"Content-Type": "application/json"} if content is not None else {}
+        response = await self._http.post(endpoint, content=content, headers=headers)
+        return await self._handle_response(response, endpoint)
+
+    async def put(self, endpoint: str, data: dict[str, Any] | None = None) -> Any:
+        """Send a PUT request with an optional JSON body."""
+        content = json.dumps(data).encode() if data is not None else None
+        headers = {"Content-Type": "application/json"} if content is not None else {}
+        response = await self._http.put(endpoint, content=content, headers=headers)
+        return await self._handle_response(response, endpoint)
+
+    async def delete(self, endpoint: str) -> Any:
+        """Send a DELETE request."""
+        response = await self._http.delete(endpoint)
+        return await self._handle_response(response, endpoint)
