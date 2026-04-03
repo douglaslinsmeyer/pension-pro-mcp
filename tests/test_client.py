@@ -100,3 +100,93 @@ class TestDelete:
         )
         result = await client.delete("/notes/3")
         assert result == {"success": True}
+
+
+class TestODataQuery:
+    def test_builds_filter_with_eq(self, client: PensionProClient) -> None:
+        params = client.build_odata_params(
+            filters={"Name": "Acme 401k"},
+            top=50,
+        )
+        assert params["$filter"] == "Name eq 'Acme 401k'"
+        assert params["$top"] == "50"
+
+    def test_builds_filter_with_contains(self, client: PensionProClient) -> None:
+        params = client.build_odata_params(
+            filters={"Name__contains": "Acme"},
+        )
+        assert params["$filter"] == "contains(Name, 'Acme')"
+
+    def test_builds_multiple_filters(self, client: PensionProClient) -> None:
+        params = client.build_odata_params(
+            filters={"Name__contains": "Acme", "IsDeactivated": "false"},
+        )
+        assert "contains(Name, 'Acme')" in params["$filter"]
+        assert "IsDeactivated eq false" in params["$filter"]
+        assert " and " in params["$filter"]
+
+    def test_builds_orderby(self, client: PensionProClient) -> None:
+        params = client.build_odata_params(orderby="Name desc")
+        assert params["$orderby"] == "Name desc"
+
+    def test_builds_expand(self, client: PensionProClient) -> None:
+        params = client.build_odata_params(expand=["Client", "PlanType"])
+        assert params["$expand"] == "Client,PlanType"
+
+    def test_builds_skip(self, client: PensionProClient) -> None:
+        params = client.build_odata_params(skip=100, top=50)
+        assert params["$skip"] == "100"
+        assert params["$top"] == "50"
+
+    def test_empty_params_returns_empty_dict(self, client: PensionProClient) -> None:
+        params = client.build_odata_params()
+        assert params == {}
+
+
+class TestGetList:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_list_returns_results(self, client: PensionProClient) -> None:
+        respx.get("https://api.pensionpro.com/v2/plans").mock(
+            return_value=httpx.Response(200, json=[
+                {"Id": 1, "Name": "Plan A"},
+                {"Id": 2, "Name": "Plan B"},
+            ])
+        )
+        results = await client.get_list("/plans", top=50)
+        assert len(results) == 2
+        assert results[0]["Name"] == "Plan A"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_list_paginates(self, client: PensionProClient) -> None:
+        route = respx.get("https://api.pensionpro.com/v2/plans")
+        route.side_effect = [
+            httpx.Response(200, json=[{"Id": 1}, {"Id": 2}]),
+            httpx.Response(200, json=[{"Id": 3}]),
+        ]
+        results = await client.get_list("/plans", top=2)
+        assert len(results) == 3
+        second_request = route.calls[1].request
+        assert "$skip=2" in str(second_request.url)
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_list_respects_limit(self, client: PensionProClient) -> None:
+        route = respx.get("https://api.pensionpro.com/v2/plans")
+        route.side_effect = [
+            httpx.Response(200, json=[{"Id": i} for i in range(1000)]),
+            httpx.Response(200, json=[{"Id": i} for i in range(1000, 2000)]),
+        ]
+        results = await client.get_list("/plans", top=1000, max_total=1500)
+        assert len(results) == 1500
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_list_with_filters(self, client: PensionProClient) -> None:
+        route = respx.get("https://api.pensionpro.com/v2/plans").mock(
+            return_value=httpx.Response(200, json=[{"Id": 1}])
+        )
+        await client.get_list("/plans", filters={"Name__contains": "Acme"}, top=50)
+        request_url = str(route.calls[0].request.url)
+        assert "contains(Name" in request_url

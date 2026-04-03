@@ -68,3 +68,81 @@ class PensionProClient:
         """Send a DELETE request."""
         response = await self._http.delete(endpoint)
         return await self._handle_response(response, endpoint)
+
+    def build_odata_params(
+        self,
+        filters: dict[str, str] | None = None,
+        expand: list[str] | None = None,
+        orderby: str | None = None,
+        top: int | None = None,
+        skip: int | None = None,
+    ) -> dict[str, str]:
+        """Build OData query parameters from structured inputs."""
+        params: dict[str, str] = {}
+
+        if filters:
+            clauses: list[str] = []
+            for key, value in filters.items():
+                if key.endswith("__contains"):
+                    field = key[: -len("__contains")]
+                    clauses.append(f"contains({field}, '{value}')")
+                elif value in ("true", "false"):
+                    clauses.append(f"{key} eq {value}")
+                else:
+                    clauses.append(f"{key} eq '{value}'")
+            params["$filter"] = " and ".join(clauses)
+
+        if expand:
+            params["$expand"] = ",".join(expand)
+
+        if orderby:
+            params["$orderby"] = orderby
+
+        if top is not None:
+            params["$top"] = str(top)
+
+        if skip is not None:
+            params["$skip"] = str(skip)
+
+        return params
+
+    async def get_list(
+        self,
+        endpoint: str,
+        filters: dict[str, str] | None = None,
+        expand: list[str] | None = None,
+        orderby: str | None = None,
+        top: int = 1000,
+        max_total: int = 5000,
+    ) -> list[dict[str, Any]]:
+        """Fetch a list endpoint with automatic pagination."""
+        page_size = min(top, 1000)
+        all_results: list[dict[str, Any]] = []
+        skip = 0
+
+        while len(all_results) < max_total:
+            params = self.build_odata_params(
+                filters=filters,
+                expand=expand,
+                orderby=orderby,
+                top=page_size,
+                skip=skip if skip > 0 else None,
+            )
+            # Build query string manually to avoid percent-encoding OData special chars
+            if params:
+                query_string = "&".join(f"{k}={v}" for k, v in params.items())
+                full_endpoint = f"{endpoint}?{query_string}"
+            else:
+                full_endpoint = endpoint
+            page = await self.get(full_endpoint)
+            if not isinstance(page, list):
+                page = [page]
+
+            all_results.extend(page)
+
+            if len(page) < page_size:
+                break
+
+            skip += page_size
+
+        return all_results[:max_total]
