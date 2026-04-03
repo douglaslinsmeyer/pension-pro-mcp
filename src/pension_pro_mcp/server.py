@@ -40,6 +40,7 @@ from pension_pro_mcp.tools.projects import (
     search_projects, get_project_details, complete_task,
     uncomplete_task, reassign_task, create_project_from_template,
 )
+from pension_pro_mcp.tools.clients import search_clients, get_client_details, search_contacts
 
 
 @mcp.tool()
@@ -152,6 +153,39 @@ async def create_project_from_template_tool(
     """Create a new project on a plan from a project template."""
     client = ctx.request_context.lifespan_context.client
     return await create_project_from_template(client, plan_id=plan_id, template_id=template_id)
+
+
+@mcp.tool()
+async def search_clients_tool(
+    ctx: Context[ServerSession, AppContext],
+    name: str | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    """Search and filter clients by company name."""
+    client = ctx.request_context.lifespan_context.client
+    return await search_clients(client, name=name, limit=limit)
+
+
+@mcp.tool()
+async def get_client_details_tool(
+    ctx: Context[ServerSession, AppContext],
+    client_id: int,
+) -> dict:
+    """Get a client with their plans and notes."""
+    client = ctx.request_context.lifespan_context.client
+    return await get_client_details(client, client_id=client_id)
+
+
+@mcp.tool()
+async def search_contacts_tool(
+    ctx: Context[ServerSession, AppContext],
+    name: str | None = None,
+    client_id: int | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    """Search and filter contacts by name or client."""
+    client = ctx.request_context.lifespan_context.client
+    return await search_contacts(client, name=name, client_id=client_id, limit=limit)
 
 
 def main() -> None:
