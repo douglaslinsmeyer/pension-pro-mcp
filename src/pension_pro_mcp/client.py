@@ -1,6 +1,5 @@
 """PensionPro API client."""
 
-import json
 import os
 from typing import Any
 
@@ -57,16 +56,12 @@ class PensionProClient:
 
     async def post(self, endpoint: str, data: dict[str, Any] | None = None) -> Any:
         """Send a POST request with a JSON body."""
-        content = json.dumps(data).encode() if data is not None else None
-        headers = {"Content-Type": "application/json"} if content is not None else {}
-        response = await self._http.post(endpoint, content=content, headers=headers)
+        response = await self._http.post(endpoint, json=data)
         return await self._handle_response(response, endpoint)
 
     async def put(self, endpoint: str, data: dict[str, Any] | None = None) -> Any:
         """Send a PUT request with an optional JSON body."""
-        content = json.dumps(data).encode() if data is not None else None
-        headers = {"Content-Type": "application/json"} if content is not None else {}
-        response = await self._http.put(endpoint, content=content, headers=headers)
+        response = await self._http.put(endpoint, json=data)
         return await self._handle_response(response, endpoint)
 
     async def delete(self, endpoint: str) -> Any:

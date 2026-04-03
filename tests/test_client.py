@@ -66,7 +66,9 @@ class TestPost:
         )
         result = await client.post("/notes", data={"NoteText": "hello"})
         assert result == {"Id": 10}
-        assert route.calls[0].request.content == b'{"NoteText": "hello"}'
+        import json
+        sent_body = json.loads(route.calls[0].request.content)
+        assert sent_body == {"NoteText": "hello"}
 
 
 class TestPut:
