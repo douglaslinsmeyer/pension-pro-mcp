@@ -42,6 +42,7 @@ from pension_pro_mcp.tools.projects import (
 )
 from pension_pro_mcp.tools.clients import search_clients, get_client_details, search_contacts
 from pension_pro_mcp.tools.todos import search_todos, get_todo, create_todo, update_todo
+from pension_pro_mcp.tools.notes import add_note, get_notes
 
 
 @mcp.tool()
@@ -248,6 +249,35 @@ async def update_todo_tool(
     """Update an existing to-do's subject, description, status, priority, or due date."""
     client = ctx.request_context.lifespan_context.client
     return await update_todo(client, todo_id=todo_id, subject=subject, description=description, status_id=status_id, priority_id=priority_id, due_date=due_date)
+
+
+@mcp.tool()
+async def add_note_tool(
+    ctx: Context[ServerSession, AppContext],
+    text: str,
+    plan_id: int | None = None,
+    project_id: int | None = None,
+    task_id: int | None = None,
+    contact_id: int | None = None,
+    category_id: int | None = None,
+) -> dict:
+    """Add a note to a plan, project, task, or contact. At least one entity ID must be provided."""
+    client = ctx.request_context.lifespan_context.client
+    return await add_note(client, text=text, plan_id=plan_id, project_id=project_id, task_id=task_id, contact_id=contact_id, category_id=category_id)
+
+
+@mcp.tool()
+async def get_notes_tool(
+    ctx: Context[ServerSession, AppContext],
+    plan_id: int | None = None,
+    project_id: int | None = None,
+    task_id: int | None = None,
+    contact_id: int | None = None,
+    limit: int = 25,
+) -> list[dict]:
+    """Get notes for an entity (plan, project, task, or contact). At least one entity ID must be provided."""
+    client = ctx.request_context.lifespan_context.client
+    return await get_notes(client, plan_id=plan_id, project_id=project_id, task_id=task_id, contact_id=contact_id, limit=limit)
 
 
 def main() -> None:
