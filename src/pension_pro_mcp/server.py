@@ -36,6 +36,10 @@ from mcp.server.fastmcp import Context
 from mcp.server.session import ServerSession
 
 from pension_pro_mcp.tools.plans import search_plans, get_plan_details, get_plan_projects
+from pension_pro_mcp.tools.projects import (
+    search_projects, get_project_details, complete_task,
+    uncomplete_task, reassign_task, create_project_from_template,
+)
 
 
 @mcp.tool()
@@ -80,6 +84,74 @@ async def get_plan_projects_tool(
     """
     client = ctx.request_context.lifespan_context.client
     return await get_plan_projects(client, plan_id=plan_id, status=status)
+
+
+@mcp.tool()
+async def search_projects_tool(
+    ctx: Context[ServerSession, AppContext],
+    status: str | None = None,
+    project_type: str | None = None,
+    plan_id: int | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    """Search and filter projects by status, type, or plan."""
+    client = ctx.request_context.lifespan_context.client
+    return await search_projects(client, status=status, project_type=project_type, plan_id=plan_id, limit=limit)
+
+
+@mcp.tool()
+async def get_project_details_tool(
+    ctx: Context[ServerSession, AppContext],
+    project_id: int,
+) -> dict:
+    """Get a project with its task groups, tasks, participants, and notes."""
+    client = ctx.request_context.lifespan_context.client
+    return await get_project_details(client, project_id=project_id)
+
+
+@mcp.tool()
+async def complete_task_tool(
+    ctx: Context[ServerSession, AppContext],
+    task_id: int,
+) -> dict:
+    """Mark a task as complete."""
+    client = ctx.request_context.lifespan_context.client
+    result = await complete_task(client, task_id=task_id)
+    return {"success": True, "task_id": task_id, "result": result}
+
+
+@mcp.tool()
+async def uncomplete_task_tool(
+    ctx: Context[ServerSession, AppContext],
+    task_id: int,
+) -> dict:
+    """Undo task completion — revert a task to incomplete."""
+    client = ctx.request_context.lifespan_context.client
+    result = await uncomplete_task(client, task_id=task_id)
+    return {"success": True, "task_id": task_id, "result": result}
+
+
+@mcp.tool()
+async def reassign_task_tool(
+    ctx: Context[ServerSession, AppContext],
+    task_id: int,
+    assigned_to_id: int,
+) -> dict:
+    """Reassign a task to a different employee."""
+    client = ctx.request_context.lifespan_context.client
+    result = await reassign_task(client, task_id=task_id, assigned_to_id=assigned_to_id)
+    return {"success": True, "task_id": task_id, "assigned_to_id": assigned_to_id, "result": result}
+
+
+@mcp.tool()
+async def create_project_from_template_tool(
+    ctx: Context[ServerSession, AppContext],
+    plan_id: int,
+    template_id: int,
+) -> dict:
+    """Create a new project on a plan from a project template."""
+    client = ctx.request_context.lifespan_context.client
+    return await create_project_from_template(client, plan_id=plan_id, template_id=template_id)
 
 
 def main() -> None:
