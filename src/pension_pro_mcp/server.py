@@ -376,12 +376,13 @@ async def _search_api_paths(
 async def _get_api_endpoint(
     ctx: Context[ServerSession, AppContext],
     path: str,
-) -> dict:
-    """Get full details for a specific API endpoint including parameters and response schemas."""
+    raw: bool = False,
+) -> dict | str:
+    """Get details for a specific API endpoint. Returns a compact summary by default. Set raw=true for the full JSON schema."""
     spec = ctx.request_context.lifespan_context.swagger_spec
     if not spec:
         return {"error": "Swagger spec not available"}
-    return get_endpoint(spec, path=path)
+    return get_endpoint(spec, path=path, raw=raw)
 
 
 @mcp.tool(name="search_api_schemas")
@@ -400,12 +401,13 @@ async def _search_api_schemas(
 async def _get_api_schema(
     ctx: Context[ServerSession, AppContext],
     name: str,
-) -> dict:
-    """Get the full definition of a specific API data model/schema including all fields and types."""
+    raw: bool = False,
+) -> dict | str:
+    """Get the definition of a specific API data model/schema. Returns a compact summary by default. Set raw=true for the full JSON schema."""
     spec = ctx.request_context.lifespan_context.swagger_spec
     if not spec:
         return {"error": "Swagger spec not available"}
-    return get_schema(spec, name=name)
+    return get_schema(spec, name=name, raw=raw)
 
 
 def main() -> None:
