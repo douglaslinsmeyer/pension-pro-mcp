@@ -41,8 +41,11 @@ mcp = FastMCP(
 )
 
 
-@mcp.tool()
-async def search_plans_tool(
+# --- Plan tools ---
+
+
+@mcp.tool(name="search_plans")
+async def _search_plans(
     ctx: Context[ServerSession, AppContext],
     name: str | None = None,
     status: str | None = None,
@@ -58,8 +61,8 @@ async def search_plans_tool(
     return await search_plans(client, name=name, status=status, plan_type=plan_type, client_name=client_name, limit=limit)
 
 
-@mcp.tool()
-async def get_plan_details_tool(
+@mcp.tool(name="get_plan_details")
+async def _get_plan_details(
     ctx: Context[ServerSession, AppContext],
     plan_id: int,
 ) -> dict:
@@ -71,8 +74,8 @@ async def get_plan_details_tool(
     return await get_plan_details(client, plan_id=plan_id)
 
 
-@mcp.tool()
-async def get_plan_projects_tool(
+@mcp.tool(name="get_plan_projects")
+async def _get_plan_projects(
     ctx: Context[ServerSession, AppContext],
     plan_id: int,
     status: str | None = None,
@@ -85,8 +88,11 @@ async def get_plan_projects_tool(
     return await get_plan_projects(client, plan_id=plan_id, status=status)
 
 
-@mcp.tool()
-async def search_projects_tool(
+# --- Project & task tools ---
+
+
+@mcp.tool(name="search_projects")
+async def _search_projects(
     ctx: Context[ServerSession, AppContext],
     status: str | None = None,
     project_type: str | None = None,
@@ -98,8 +104,8 @@ async def search_projects_tool(
     return await search_projects(client, status=status, project_type=project_type, plan_id=plan_id, limit=limit)
 
 
-@mcp.tool()
-async def get_project_details_tool(
+@mcp.tool(name="get_project_details")
+async def _get_project_details(
     ctx: Context[ServerSession, AppContext],
     project_id: int,
 ) -> dict:
@@ -108,8 +114,8 @@ async def get_project_details_tool(
     return await get_project_details(client, project_id=project_id)
 
 
-@mcp.tool()
-async def get_task_details_tool(
+@mcp.tool(name="get_task_details")
+async def _get_task_details(
     ctx: Context[ServerSession, AppContext],
     task_id: int,
 ) -> dict:
@@ -118,8 +124,8 @@ async def get_task_details_tool(
     return await get_task_details(client, task_id=task_id)
 
 
-@mcp.tool()
-async def complete_task_tool(
+@mcp.tool(name="complete_task")
+async def _complete_task(
     ctx: Context[ServerSession, AppContext],
     task_id: int,
 ) -> dict:
@@ -129,8 +135,8 @@ async def complete_task_tool(
     return {"success": True, "task_id": task_id, "result": result}
 
 
-@mcp.tool()
-async def uncomplete_task_tool(
+@mcp.tool(name="uncomplete_task")
+async def _uncomplete_task(
     ctx: Context[ServerSession, AppContext],
     task_id: int,
 ) -> dict:
@@ -140,8 +146,8 @@ async def uncomplete_task_tool(
     return {"success": True, "task_id": task_id, "result": result}
 
 
-@mcp.tool()
-async def reassign_task_tool(
+@mcp.tool(name="reassign_task")
+async def _reassign_task(
     ctx: Context[ServerSession, AppContext],
     task_id: int,
     assigned_to_id: int,
@@ -152,8 +158,8 @@ async def reassign_task_tool(
     return {"success": True, "task_id": task_id, "assigned_to_id": assigned_to_id, "result": result}
 
 
-@mcp.tool()
-async def create_project_from_template_tool(
+@mcp.tool(name="create_project_from_template")
+async def _create_project_from_template(
     ctx: Context[ServerSession, AppContext],
     plan_id: int,
     template_id: int,
@@ -163,8 +169,11 @@ async def create_project_from_template_tool(
     return await create_project_from_template(client, plan_id=plan_id, template_id=template_id)
 
 
-@mcp.tool()
-async def search_clients_tool(
+# --- Client & contact tools ---
+
+
+@mcp.tool(name="search_clients")
+async def _search_clients(
     ctx: Context[ServerSession, AppContext],
     name: str | None = None,
     limit: int = 50,
@@ -174,8 +183,8 @@ async def search_clients_tool(
     return await search_clients(client, name=name, limit=limit)
 
 
-@mcp.tool()
-async def get_client_details_tool(
+@mcp.tool(name="get_client_details")
+async def _get_client_details(
     ctx: Context[ServerSession, AppContext],
     client_id: int,
 ) -> dict:
@@ -184,8 +193,8 @@ async def get_client_details_tool(
     return await get_client_details(client, client_id=client_id)
 
 
-@mcp.tool()
-async def search_contacts_tool(
+@mcp.tool(name="search_contacts")
+async def _search_contacts(
     ctx: Context[ServerSession, AppContext],
     name: str | None = None,
     client_id: int | None = None,
@@ -196,8 +205,11 @@ async def search_contacts_tool(
     return await search_contacts(client, name=name, client_id=client_id, limit=limit)
 
 
-@mcp.tool()
-async def search_todos_tool(
+# --- To-do tools ---
+
+
+@mcp.tool(name="search_todos")
+async def _search_todos(
     ctx: Context[ServerSession, AppContext],
     status: str | None = None,
     priority: str | None = None,
@@ -210,8 +222,8 @@ async def search_todos_tool(
     return await search_todos(client, status=status, priority=priority, plan_id=plan_id, project_id=project_id, limit=limit)
 
 
-@mcp.tool()
-async def get_todo_tool(
+@mcp.tool(name="get_todo")
+async def _get_todo(
     ctx: Context[ServerSession, AppContext],
     todo_id: int,
 ) -> dict:
@@ -220,8 +232,8 @@ async def get_todo_tool(
     return await get_todo(client, todo_id=todo_id)
 
 
-@mcp.tool()
-async def create_todo_tool(
+@mcp.tool(name="create_todo")
+async def _create_todo(
     ctx: Context[ServerSession, AppContext],
     subject: str,
     description: str | None = None,
@@ -242,8 +254,8 @@ async def create_todo_tool(
     )
 
 
-@mcp.tool()
-async def update_todo_tool(
+@mcp.tool(name="update_todo")
+async def _update_todo(
     ctx: Context[ServerSession, AppContext],
     todo_id: int,
     subject: str | None = None,
@@ -257,8 +269,11 @@ async def update_todo_tool(
     return await update_todo(client, todo_id=todo_id, subject=subject, description=description, status_id=status_id, priority_id=priority_id, due_date=due_date)
 
 
-@mcp.tool()
-async def add_note_tool(
+# --- Notes tools ---
+
+
+@mcp.tool(name="add_note")
+async def _add_note(
     ctx: Context[ServerSession, AppContext],
     text: str,
     plan_id: int | None = None,
@@ -272,8 +287,8 @@ async def add_note_tool(
     return await add_note(client, text=text, plan_id=plan_id, project_id=project_id, task_id=task_id, contact_id=contact_id, category_id=category_id)
 
 
-@mcp.tool()
-async def get_notes_tool(
+@mcp.tool(name="get_notes")
+async def _get_notes(
     ctx: Context[ServerSession, AppContext],
     plan_id: int | None = None,
     project_id: int | None = None,

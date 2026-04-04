@@ -78,24 +78,25 @@ Add to your `.claude/settings.json`:
 
 | Tool | Description |
 |------|-------------|
-| `search_plans_tool` | Search and filter plans by name, status, type, or client |
-| `get_plan_details_tool` | Get plan with contacts, cycles, services, investments, fees |
-| `get_plan_projects_tool` | Get projects for a plan with task completion summaries |
-| `search_projects_tool` | Search and filter projects by status, type, or plan |
-| `get_project_details_tool` | Get project with task groups, tasks, participants, notes |
-| `complete_task_tool` | Mark a task as complete |
-| `uncomplete_task_tool` | Revert a task to incomplete |
-| `reassign_task_tool` | Reassign a task to a different employee |
-| `create_project_from_template_tool` | Create a new project from a template |
-| `search_clients_tool` | Search and filter clients by company name |
-| `get_client_details_tool` | Get client with plans and notes |
-| `search_contacts_tool` | Search and filter contacts by name or client |
-| `search_todos_tool` | Search and filter to-dos |
-| `get_todo_tool` | Get a to-do with its comments |
-| `create_todo_tool` | Create a new to-do linked to an entity |
-| `update_todo_tool` | Update a to-do's details |
-| `add_note_tool` | Add a note to a plan, project, task, or contact |
-| `get_notes_tool` | Get notes for an entity |
+| `search_plans` | Search and filter plans by name, status, type, or client |
+| `get_plan_details` | Get plan with contacts, cycles, services, investments, fees |
+| `get_plan_projects` | Get projects for a plan with task completion summaries |
+| `search_projects` | Search and filter projects by status, type, or plan |
+| `get_project_details` | Get project with task groups, tasks, participants, notes |
+| `get_task_details` | Get a single task with state, assignment, and notes |
+| `complete_task` | Mark a task as complete |
+| `uncomplete_task` | Revert a task to incomplete |
+| `reassign_task` | Reassign a task to a different employee |
+| `create_project_from_template` | Create a new project from a template |
+| `search_clients` | Search and filter clients by company name |
+| `get_client_details` | Get client with plans and notes |
+| `search_contacts` | Search and filter contacts by name or client |
+| `search_todos` | Search and filter to-dos |
+| `get_todo` | Get a to-do with its comments |
+| `create_todo` | Create a new to-do linked to an entity |
+| `update_todo` | Update a to-do's details |
+| `add_note` | Add a note to a plan, project, task, or contact |
+| `get_notes` | Get notes for an entity |
 
 ## Development
 
