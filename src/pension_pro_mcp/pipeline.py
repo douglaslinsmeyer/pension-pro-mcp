@@ -53,9 +53,12 @@ def unwrap_paginated(obj: Any) -> Any:
 
 
 def strip_nulls(obj: Any) -> Any:
-    """Recursively remove keys with null, empty string, or empty list values."""
+    """Recursively remove keys with null or empty string values.
+
+    Empty lists are preserved so the client knows the data was fetched but had no results.
+    """
     if isinstance(obj, dict):
-        return {k: strip_nulls(v) for k, v in obj.items() if v is not None and v != "" and v != []}
+        return {k: strip_nulls(v) for k, v in obj.items() if v is not None and v != ""}
     if isinstance(obj, list):
         return [strip_nulls(item) for item in obj]
     return obj

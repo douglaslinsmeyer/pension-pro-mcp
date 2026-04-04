@@ -42,11 +42,11 @@ async def get_plan_details(
 
     return {
         "plan": plan,
-        "contacts": contacts if isinstance(contacts, list) else [contacts],
-        "plan_cycles": plan_cycles if isinstance(plan_cycles, list) else [plan_cycles],
-        "services_provided": services if isinstance(services, list) else [services],
-        "investment_providers": investments if isinstance(investments, list) else [investments],
-        "fee_schedules": fee_schedules if isinstance(fee_schedules, list) else [fee_schedules],
+        "contacts": contacts,
+        "plan_cycles": plan_cycles,
+        "services_provided": services,
+        "investment_providers": investments,
+        "fee_schedules": fee_schedules,
     }
 
 
@@ -67,7 +67,10 @@ async def get_plan_projects(
     async def _fetch_task_summary(project: dict[str, Any]) -> dict[str, Any]:
         project_id = project["Id"]
         tasks_data = await client.get(f"/projects/{project_id}/tasks")
-        tasks = tasks_data if isinstance(tasks_data, list) else [tasks_data]
+        # Unwrap paginated response for local computation
+        tasks = tasks_data["Values"] if isinstance(tasks_data, dict) and "Values" in tasks_data else tasks_data
+        if not isinstance(tasks, list):
+            tasks = [tasks]
         completed = sum(1 for t in tasks if t.get("CompletedOn"))
         total = len(tasks)
         return {

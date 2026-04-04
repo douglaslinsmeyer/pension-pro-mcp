@@ -44,7 +44,7 @@ async def get_todo(
     # The todo's link is included in the todo record as ToDoLink
     return {
         "todo": todo,
-        "comments": comments if isinstance(comments, list) else [comments],
+        "comments": comments,
         "link": todo.get("ToDoLink"),
     }
 

@@ -27,8 +27,8 @@ async def get_client_details(
     notes = await client.get(f"/clients/{client_id}/notes")
     return {
         "client": client_data,
-        "plans": plans if isinstance(plans, list) else [plans],
-        "notes": notes if isinstance(notes, list) else [notes],
+        "plans": plans,
+        "notes": notes,
     }
 
 
