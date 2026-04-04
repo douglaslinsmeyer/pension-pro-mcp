@@ -14,8 +14,9 @@ class TestClientInit:
         with pytest.raises(ValueError, match="PENSION_PRO_API_KEY"):
             PensionProClient()
 
-    def test_sets_auth_header(self, client: PensionProClient) -> None:
-        assert client._http.headers["apikey-username"] == "test-key|test-user"
+    def test_sets_auth_headers(self, client: PensionProClient) -> None:
+        assert client._http.headers["apikey"] == "test-key"
+        assert client._http.headers["username"] == "test-user"
 
 
 class TestGet:

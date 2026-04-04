@@ -30,7 +30,7 @@ class PensionProClient:
             )
         self._http = httpx.AsyncClient(
             base_url=self.BASE_URL,
-            headers={"apikey-username": f"{api_key}|{username}"},
+            headers={"ApiKey": api_key, "Username": username},
             timeout=30.0,
         )
 
