@@ -17,14 +17,16 @@ A local, open-source [MCP](https://modelcontextprotocol.io/) server that provide
 
 ## Installation
 
+Install from [PyPI](https://pypi.org/project/pension-pro-mcp/):
+
 ```bash
-pip install git+https://github.com/douglaslinsmeyer/pension-pro-mcp.git
+pip install pension-pro-mcp
 ```
 
-Or run directly with [uvx](https://docs.astral.sh/uv/):
+Or run directly with [uvx](https://docs.astral.sh/uv/) (no install required):
 
 ```bash
-uvx --from git+https://github.com/douglaslinsmeyer/pension-pro-mcp.git pension-pro-mcp
+uvx pension-pro-mcp
 ```
 
 ## Configuration
@@ -45,7 +47,7 @@ Add to your `claude_desktop_config.json`:
   "mcpServers": {
     "pension-pro": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/douglaslinsmeyer/pension-pro-mcp.git", "pension-pro-mcp"],
+      "args": ["pension-pro-mcp"],
       "env": {
         "PENSION_PRO_API_KEY": "your_api_key",
         "PENSION_PRO_USERNAME": "your_username"
@@ -57,14 +59,14 @@ Add to your `claude_desktop_config.json`:
 
 ### Claude Code
 
-Add to your `.claude/settings.json`:
+Add to your project's `.mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "pension-pro": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/douglaslinsmeyer/pension-pro-mcp.git", "pension-pro-mcp"],
+      "args": ["pension-pro-mcp"],
       "env": {
         "PENSION_PRO_API_KEY": "your_api_key",
         "PENSION_PRO_USERNAME": "your_username"

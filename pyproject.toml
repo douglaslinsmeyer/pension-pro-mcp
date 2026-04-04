@@ -9,10 +9,27 @@ description = "MCP server for the PensionPro API"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
+authors = [
+    { name = "Douglas Linsmeyer", email = "douglaslinsmeyer@gmail.com" },
+]
+keywords = ["mcp", "pensionpro", "pension", "ai", "model-context-protocol"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
 dependencies = [
     "mcp>=1.0.0",
     "httpx>=0.27.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/douglaslinsmeyer/pension-pro-mcp"
+Repository = "https://github.com/douglaslinsmeyer/pension-pro-mcp"
+Issues = "https://github.com/douglaslinsmeyer/pension-pro-mcp/issues"
 
 [project.scripts]
 pension-pro-mcp = "pension_pro_mcp.server:main"
