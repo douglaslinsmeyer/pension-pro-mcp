@@ -87,7 +87,7 @@ class PensionProClient:
                 if key.endswith("__contains"):
                     field = key[: -len("__contains")]
                     clauses.append(f"contains({field}, '{escaped}')")
-                elif value in ("true", "false"):
+                elif value in ("true", "false", "null"):
                     clauses.append(f"{key} eq {value}")
                 elif value.isdigit():
                     clauses.append(f"{key} eq {value}")
@@ -137,9 +137,14 @@ class PensionProClient:
                 full_endpoint = f"{endpoint}?{query_string}"
             else:
                 full_endpoint = endpoint
-            page = await self.get(full_endpoint)
-            if not isinstance(page, list):
-                page = [page]
+            raw = await self.get(full_endpoint)
+            # Handle paginated response format: {"Values": [...], "TotalCount": N}
+            if isinstance(raw, dict) and "Values" in raw:
+                page = raw["Values"]
+            elif isinstance(raw, list):
+                page = raw
+            else:
+                page = [raw]
 
             all_results.extend(page)
 

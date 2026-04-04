@@ -23,12 +23,8 @@ async def get_worktray(
 ) -> dict[str, Any]:
     """Get a worktray with its members and active tasks."""
     worktray = await client.get(f"/worktrays/{worktray_id}")
-    members = await client.get_list(
-        "/worktrayMembers",
-        filters={"WorktrayID": str(worktray_id)},
-        top=200,
-        max_total=200,
-    )
+    all_members = await client.get_list("/worktrayMembers", top=1000, max_total=5000)
+    members = [m for m in all_members if m.get("WorktrayID") == worktray_id]
     tasks = await client.get_list(
         "/tasks",
         filters={"TeamId": str(worktray_id), "DateCompleted": "null"},
