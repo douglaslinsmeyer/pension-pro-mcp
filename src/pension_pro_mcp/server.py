@@ -1,8 +1,12 @@
 """PensionPro MCP Server entry point."""
 
+import json
+import os
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -10,6 +14,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
 
 from pension_pro_mcp.client import PensionProClient
+from pension_pro_mcp.pipeline import build_default_pipeline
 from pension_pro_mcp.tools.plans import search_plans, get_plan_details, get_plan_projects
 from pension_pro_mcp.tools.projects import (
     search_projects, get_project_details, get_task_group, get_task_details, complete_task,
@@ -23,6 +28,8 @@ from pension_pro_mcp.tools.swagger import (
     SWAGGER_URL, search_paths, get_endpoint, search_schemas, get_schema,
 )
 
+pipeline = build_default_pipeline()
+
 
 @dataclass
 class AppContext:
@@ -32,15 +39,55 @@ class AppContext:
     swagger_spec: dict[str, Any] = field(default_factory=dict)
 
 
+def _cache_dir() -> Path:
+    """Return the platform-appropriate cache directory."""
+    if os.name == "nt":
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    else:
+        base = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+    return base / "pension-pro-mcp"
+
+
+SWAGGER_CACHE_DIR = _cache_dir()
+SWAGGER_CACHE_FILE = SWAGGER_CACHE_DIR / "swagger.json"
+SWAGGER_CACHE_MAX_AGE = 86400  # 24 hours
+
+
+def _filter_v2(spec: dict[str, Any]) -> dict[str, Any]:
+    """Filter spec to v2 endpoints only."""
+    spec["paths"] = {p: v for p, v in spec["paths"].items() if p.startswith("/v2/")}
+    return spec
+
+
+def _read_cache() -> dict[str, Any] | None:
+    """Read cached swagger spec if it exists and is fresh."""
+    if not SWAGGER_CACHE_FILE.exists():
+        return None
+    age = time.time() - SWAGGER_CACHE_FILE.stat().st_mtime
+    if age > SWAGGER_CACHE_MAX_AGE:
+        return None
+    return _filter_v2(json.loads(SWAGGER_CACHE_FILE.read_text()))
+
+
+def _write_cache(spec: dict[str, Any]) -> None:
+    """Write swagger spec to disk cache."""
+    SWAGGER_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    SWAGGER_CACHE_FILE.write_text(json.dumps(spec))
+
+
 async def _fetch_swagger_spec() -> dict[str, Any]:
-    """Download the PensionPro v2 swagger spec and filter to v2 endpoints only."""
+    """Load swagger spec from cache or download fresh."""
+    cached = _read_cache()
+    if cached is not None:
+        return cached
+
     async with httpx.AsyncClient(timeout=30.0) as http:
         response = await http.get(SWAGGER_URL)
         response.raise_for_status()
         spec = response.json()
-    # Only keep v2 endpoints
-    spec["paths"] = {p: v for p, v in spec["paths"].items() if p.startswith("/v2/")}
-    return spec
+
+    _write_cache(spec)
+    return _filter_v2(spec)
 
 
 @asynccontextmanager
@@ -67,6 +114,7 @@ mcp = FastMCP(
 
 
 @mcp.tool(name="search_plans")
+@pipeline.wrap
 async def _search_plans(
     ctx: Context[ServerSession, AppContext],
     name: str | None = None,
@@ -84,6 +132,7 @@ async def _search_plans(
 
 
 @mcp.tool(name="get_plan_details")
+@pipeline.wrap
 async def _get_plan_details(
     ctx: Context[ServerSession, AppContext],
     plan_id: int,
@@ -97,6 +146,7 @@ async def _get_plan_details(
 
 
 @mcp.tool(name="get_plan_projects")
+@pipeline.wrap
 async def _get_plan_projects(
     ctx: Context[ServerSession, AppContext],
     plan_id: int,
@@ -114,6 +164,7 @@ async def _get_plan_projects(
 
 
 @mcp.tool(name="search_projects")
+@pipeline.wrap
 async def _search_projects(
     ctx: Context[ServerSession, AppContext],
     status: str | None = None,
@@ -127,16 +178,18 @@ async def _search_projects(
 
 
 @mcp.tool(name="get_project_details")
+@pipeline.wrap
 async def _get_project_details(
     ctx: Context[ServerSession, AppContext],
     project_id: int,
 ) -> dict:
-    """Get a project with its task groups, tasks, participants, and notes."""
+    """Get a project with its task groups, tasks, participants, notes, and files."""
     client = ctx.request_context.lifespan_context.client
     return await get_project_details(client, project_id=project_id)
 
 
 @mcp.tool(name="get_task_group")
+@pipeline.wrap
 async def _get_task_group(
     ctx: Context[ServerSession, AppContext],
     task_group_id: int,
@@ -147,6 +200,7 @@ async def _get_task_group(
 
 
 @mcp.tool(name="get_task_details")
+@pipeline.wrap
 async def _get_task_details(
     ctx: Context[ServerSession, AppContext],
     task_id: int,
@@ -157,6 +211,7 @@ async def _get_task_details(
 
 
 @mcp.tool(name="complete_task")
+@pipeline.wrap
 async def _complete_task(
     ctx: Context[ServerSession, AppContext],
     task_id: int,
@@ -168,6 +223,7 @@ async def _complete_task(
 
 
 @mcp.tool(name="uncomplete_task")
+@pipeline.wrap
 async def _uncomplete_task(
     ctx: Context[ServerSession, AppContext],
     task_id: int,
@@ -179,6 +235,7 @@ async def _uncomplete_task(
 
 
 @mcp.tool(name="reassign_task")
+@pipeline.wrap
 async def _reassign_task(
     ctx: Context[ServerSession, AppContext],
     task_id: int,
@@ -191,6 +248,7 @@ async def _reassign_task(
 
 
 @mcp.tool(name="create_project_from_template")
+@pipeline.wrap
 async def _create_project_from_template(
     ctx: Context[ServerSession, AppContext],
     plan_id: int,
@@ -205,6 +263,7 @@ async def _create_project_from_template(
 
 
 @mcp.tool(name="search_clients")
+@pipeline.wrap
 async def _search_clients(
     ctx: Context[ServerSession, AppContext],
     name: str | None = None,
@@ -216,6 +275,7 @@ async def _search_clients(
 
 
 @mcp.tool(name="get_client_details")
+@pipeline.wrap
 async def _get_client_details(
     ctx: Context[ServerSession, AppContext],
     client_id: int,
@@ -226,6 +286,7 @@ async def _get_client_details(
 
 
 @mcp.tool(name="search_contacts")
+@pipeline.wrap
 async def _search_contacts(
     ctx: Context[ServerSession, AppContext],
     name: str | None = None,
@@ -241,6 +302,7 @@ async def _search_contacts(
 
 
 @mcp.tool(name="search_todos")
+@pipeline.wrap
 async def _search_todos(
     ctx: Context[ServerSession, AppContext],
     status: str | None = None,
@@ -255,6 +317,7 @@ async def _search_todos(
 
 
 @mcp.tool(name="get_todo")
+@pipeline.wrap
 async def _get_todo(
     ctx: Context[ServerSession, AppContext],
     todo_id: int,
@@ -265,6 +328,7 @@ async def _get_todo(
 
 
 @mcp.tool(name="create_todo")
+@pipeline.wrap
 async def _create_todo(
     ctx: Context[ServerSession, AppContext],
     subject: str,
@@ -287,6 +351,7 @@ async def _create_todo(
 
 
 @mcp.tool(name="update_todo")
+@pipeline.wrap
 async def _update_todo(
     ctx: Context[ServerSession, AppContext],
     todo_id: int,
@@ -305,6 +370,7 @@ async def _update_todo(
 
 
 @mcp.tool(name="add_note")
+@pipeline.wrap
 async def _add_note(
     ctx: Context[ServerSession, AppContext],
     text: str,
@@ -320,6 +386,7 @@ async def _add_note(
 
 
 @mcp.tool(name="get_notes")
+@pipeline.wrap
 async def _get_notes(
     ctx: Context[ServerSession, AppContext],
     plan_id: int | None = None,
@@ -337,6 +404,7 @@ async def _get_notes(
 
 
 @mcp.tool(name="get_worktrays")
+@pipeline.wrap
 async def _get_worktrays(
     ctx: Context[ServerSession, AppContext],
     active_only: bool = True,
@@ -348,6 +416,7 @@ async def _get_worktrays(
 
 
 @mcp.tool(name="get_worktray")
+@pipeline.wrap
 async def _get_worktray(
     ctx: Context[ServerSession, AppContext],
     worktray_id: int,
