@@ -103,6 +103,9 @@ Add to your project's `.mcp.json`:
 | `get_api_endpoint` | Get full details for a specific API endpoint |
 | `search_api_schemas` | Search API data models/schemas by keyword |
 | `get_api_schema` | Get the full definition of an API data model |
+| `search_help_articles` | Search PensionPro help center articles by keyword |
+| `get_help_article` | Get the full content of a help article |
+| `list_help_sections` | List available help sections with article counts |
 
 ## Development
 
@@ -111,6 +114,14 @@ git clone https://github.com/douglaslinsmeyer/pension-pro-mcp.git
 cd pension-pro-mcp
 pip install -e ".[dev]"
 pytest
+```
+
+### Refreshing Help Articles
+
+The bundled help articles can be refreshed from the PensionPro knowledge base:
+
+```bash
+python scripts/scrape_docs.py
 ```
 
 ## License

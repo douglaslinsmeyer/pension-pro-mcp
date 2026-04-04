@@ -27,6 +27,7 @@ from pension_pro_mcp.tools.worktrays import get_worktrays, get_worktray
 from pension_pro_mcp.tools.swagger import (
     SWAGGER_URL, search_paths, get_endpoint, search_schemas, get_schema,
 )
+from pension_pro_mcp.tools.help import search_help, get_help_article, list_help_sections
 
 pipeline = build_default_pipeline()
 
@@ -104,8 +105,30 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
         await client.close()
 
 
+SERVER_INSTRUCTIONS = """\
+PensionPro is a plan administration platform for retirement plan service providers (TPAs).
+
+Entity Hierarchy:
+  Client (company) → Plan (retirement plan) → Project (tracked workflow) → Task Group → Task → Task Item
+  Plan → Plan Cycle (annual period with deadlines and compliance data)
+  Plan → Contacts (people associated with the plan via roles)
+
+Key Concepts:
+- Projects are created from Project Templates and track multi-step workflows on a Plan.
+- Distributions are specialized Projects (IsDistribution=true) with extra fields for participant info, vesting, and 1099 data.
+- Tasks flow through a workflow: each Task is assigned to an employee or Worktray, and must be completed in order.
+- Worktrays are shared queues where team members can pick up Tasks.
+- PlanSponsorLink (PSL) is a client-facing portal for data collection and document access.
+- Notes can be attached to Plans, Projects, Tasks, and Contacts.
+- Files include Project Files (general) and Distribution Files (distribution-specific).
+
+Use search_help_articles to find detailed PensionPro documentation on any topic.
+Use search_api_paths and get_api_schema to explore the PensionPro REST API.
+"""
+
 mcp = FastMCP(
     "PensionPro",
+    instructions=SERVER_INSTRUCTIONS,
     lifespan=app_lifespan,
 )
 
@@ -477,6 +500,36 @@ async def _get_api_schema(
     if not spec:
         return {"error": "Swagger spec not available"}
     return get_schema(spec, name=name, raw=raw)
+
+
+# --- Help article tools ---
+
+
+@mcp.tool(name="search_help_articles")
+async def _search_help_articles(
+    ctx: Context[ServerSession, AppContext],
+    keyword: str,
+    section: str | None = None,
+) -> list[dict]:
+    """Search PensionPro help center articles by keyword. Optionally filter by section name. Use list_help_sections to see available sections."""
+    return search_help(keyword=keyword, section=section)
+
+
+@mcp.tool(name="get_help_article")
+async def _get_help_article(
+    ctx: Context[ServerSession, AppContext],
+    article_id: int,
+) -> dict:
+    """Get the full content of a PensionPro help article by its ID."""
+    return get_help_article(article_id=article_id)
+
+
+@mcp.tool(name="list_help_sections")
+async def _list_help_sections(
+    ctx: Context[ServerSession, AppContext],
+) -> list[dict]:
+    """List all available PensionPro help center sections with article counts."""
+    return list_help_sections()
 
 
 def main() -> None:
