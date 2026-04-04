@@ -8,3 +8,4 @@ build/
 .pytest_cache/
 .env
 .mcp.json
+docs/swagger.json

@@ -33,14 +33,24 @@ async def get_project_details(
     tasks = await client.get(f"/projects/{project_id}/tasks")
     participants = await client.get(f"/projects/{project_id}/participants")
     notes = await client.get(f"/projects/{project_id}/notes")
+    project_files = await client.get(f"/projects/{project_id}/projectfiles")
 
-    return {
+    result: dict[str, Any] = {
         "project": project,
         "task_groups": task_groups if isinstance(task_groups, list) else [task_groups],
         "tasks": tasks if isinstance(tasks, list) else [tasks],
         "participants": participants if isinstance(participants, list) else [participants],
         "notes": notes if isinstance(notes, list) else [notes],
+        "project_files": project_files if isinstance(project_files, list) else [project_files],
     }
+
+    if project.get("IsDistribution"):
+        distribution_files = await client.get(f"/projects/{project_id}/distributionfiles")
+        result["distribution_files"] = (
+            distribution_files if isinstance(distribution_files, list) else [distribution_files]
+        )
+
+    return result
 
 
 async def get_task_group(

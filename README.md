@@ -84,7 +84,7 @@ Add to your project's `.mcp.json`:
 | `get_plan_details` | Get plan with contacts, cycles, services, investments, fees |
 | `get_plan_projects` | Get projects for a plan with task completion summaries |
 | `search_projects` | Search and filter projects by status, type, or plan |
-| `get_project_details` | Get project with task groups, tasks, participants, notes |
+| `get_project_details` | Get project with task groups, tasks, participants, notes, and files |
 | `get_task_details` | Get a single task with state, assignment, and notes |
 | `complete_task` | Mark a task as complete |
 | `uncomplete_task` | Revert a task to incomplete |
@@ -99,6 +99,10 @@ Add to your project's `.mcp.json`:
 | `update_todo` | Update a to-do's details |
 | `add_note` | Add a note to a plan, project, task, or contact |
 | `get_notes` | Get notes for an entity |
+| `search_api_paths` | Search PensionPro API endpoints by keyword |
+| `get_api_endpoint` | Get full details for a specific API endpoint |
+| `search_api_schemas` | Search API data models/schemas by keyword |
+| `get_api_schema` | Get the full definition of an API data model |
 
 ## Development
 

@@ -2,8 +2,10 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
+import httpx
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
 
@@ -17,6 +19,9 @@ from pension_pro_mcp.tools.clients import search_clients, get_client_details, se
 from pension_pro_mcp.tools.todos import search_todos, get_todo, create_todo, update_todo
 from pension_pro_mcp.tools.notes import add_note, get_notes
 from pension_pro_mcp.tools.worktrays import get_worktrays, get_worktray
+from pension_pro_mcp.tools.swagger import (
+    SWAGGER_URL, search_paths, get_endpoint, search_schemas, get_schema,
+)
 
 
 @dataclass
@@ -24,6 +29,18 @@ class AppContext:
     """Shared application context available to all tools."""
 
     client: PensionProClient
+    swagger_spec: dict[str, Any] = field(default_factory=dict)
+
+
+async def _fetch_swagger_spec() -> dict[str, Any]:
+    """Download the PensionPro v2 swagger spec and filter to v2 endpoints only."""
+    async with httpx.AsyncClient(timeout=30.0) as http:
+        response = await http.get(SWAGGER_URL)
+        response.raise_for_status()
+        spec = response.json()
+    # Only keep v2 endpoints
+    spec["paths"] = {p: v for p, v in spec["paths"].items() if p.startswith("/v2/")}
+    return spec
 
 
 @asynccontextmanager
@@ -31,7 +48,11 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     """Manage the PensionPro HTTP client lifecycle."""
     client = PensionProClient()
     try:
-        yield AppContext(client=client)
+        swagger_spec = await _fetch_swagger_spec()
+    except Exception:
+        swagger_spec = {}
+    try:
+        yield AppContext(client=client, swagger_spec=swagger_spec)
     finally:
         await client.close()
 
@@ -334,6 +355,57 @@ async def _get_worktray(
     """Get a worktray with its members and all active (incomplete) tasks routed to it."""
     client = ctx.request_context.lifespan_context.client
     return await get_worktray(client, worktray_id=worktray_id)
+
+
+# --- Swagger / API reference tools ---
+
+
+@mcp.tool(name="search_api_paths")
+async def _search_api_paths(
+    ctx: Context[ServerSession, AppContext],
+    keyword: str,
+) -> list[dict]:
+    """Search PensionPro API endpoints by keyword. Use this to discover available API paths."""
+    spec = ctx.request_context.lifespan_context.swagger_spec
+    if not spec:
+        return [{"error": "Swagger spec not available"}]
+    return search_paths(spec, keyword=keyword)
+
+
+@mcp.tool(name="get_api_endpoint")
+async def _get_api_endpoint(
+    ctx: Context[ServerSession, AppContext],
+    path: str,
+) -> dict:
+    """Get full details for a specific API endpoint including parameters and response schemas."""
+    spec = ctx.request_context.lifespan_context.swagger_spec
+    if not spec:
+        return {"error": "Swagger spec not available"}
+    return get_endpoint(spec, path=path)
+
+
+@mcp.tool(name="search_api_schemas")
+async def _search_api_schemas(
+    ctx: Context[ServerSession, AppContext],
+    keyword: str,
+) -> list[dict]:
+    """Search PensionPro API data models by keyword. Use this to discover field names and types."""
+    spec = ctx.request_context.lifespan_context.swagger_spec
+    if not spec:
+        return [{"error": "Swagger spec not available"}]
+    return search_schemas(spec, keyword=keyword)
+
+
+@mcp.tool(name="get_api_schema")
+async def _get_api_schema(
+    ctx: Context[ServerSession, AppContext],
+    name: str,
+) -> dict:
+    """Get the full definition of a specific API data model/schema including all fields and types."""
+    spec = ctx.request_context.lifespan_context.swagger_spec
+    if not spec:
+        return {"error": "Swagger spec not available"}
+    return get_schema(spec, name=name)
 
 
 def main() -> None:
