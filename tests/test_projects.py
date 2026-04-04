@@ -6,7 +6,7 @@ import httpx
 
 from pension_pro_mcp.client import PensionProClient
 from pension_pro_mcp.tools.projects import (
-    search_projects, get_project_details, complete_task,
+    search_projects, get_project_details, get_task_details, complete_task,
     uncomplete_task, reassign_task, create_project_from_template,
 )
 
@@ -30,6 +30,23 @@ class TestSearchProjects:
         )
         result = await search_projects(client, plan_id=5)
         assert len(result) == 1
+
+
+class TestGetTaskDetails:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_returns_task_with_notes(self, client: PensionProClient) -> None:
+        respx.get("https://api.pensionpro.com/v2/tasks/42").mock(
+            return_value=httpx.Response(200, json={
+                "Id": 42, "CompletedOn": None, "AssignedToId": 5,
+            })
+        )
+        respx.get("https://api.pensionpro.com/v2/tasks/42/notes").mock(
+            return_value=httpx.Response(200, json=[{"Id": 1, "NoteText": "In progress"}])
+        )
+        result = await get_task_details(client, task_id=42)
+        assert result["task"]["Id"] == 42
+        assert len(result["notes"]) == 1
 
 
 class TestGetProjectDetails:

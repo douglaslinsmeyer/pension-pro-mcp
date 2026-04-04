@@ -43,6 +43,19 @@ async def get_project_details(
     }
 
 
+async def get_task_details(
+    client: PensionProClient,
+    task_id: int,
+) -> dict[str, Any]:
+    """Get a single task with its current state and notes."""
+    task = await client.get(f"/tasks/{task_id}")
+    notes = await client.get(f"/tasks/{task_id}/notes")
+    return {
+        "task": task,
+        "notes": notes if isinstance(notes, list) else [notes],
+    }
+
+
 async def complete_task(client: PensionProClient, task_id: int) -> Any:
     """Mark a task as complete."""
     return await client.put(f"/tasks/{task_id}/completetask")
