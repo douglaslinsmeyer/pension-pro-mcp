@@ -43,5 +43,8 @@ class TestGetWorktray:
         )
         result = await get_worktray(client, worktray_id=100)
         assert result["worktray"]["Name"] == "Review Worktray"
+        assert result["member_count"] == 1
         assert len(result["members"]) == 1
-        assert len(result["active_tasks"]) == 2
+        assert result["active_task_count"] == 2
+        assert result["task_summary"]["by_type"][0]["task_name"] == "Initial Review"
+        assert result["task_summary"]["by_type"][0]["count"] == 1
