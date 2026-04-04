@@ -43,6 +43,19 @@ async def get_project_details(
     }
 
 
+async def get_task_group(
+    client: PensionProClient,
+    task_group_id: int,
+) -> dict[str, Any]:
+    """Get a task group with all its tasks."""
+    task_group = await client.get(f"/taskgroups/{task_group_id}")
+    tasks = await client.get(f"/taskgroups/{task_group_id}/tasks")
+    return {
+        "task_group": task_group,
+        "tasks": tasks if isinstance(tasks, list) else [tasks],
+    }
+
+
 async def get_task_details(
     client: PensionProClient,
     task_id: int,

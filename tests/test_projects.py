@@ -6,7 +6,7 @@ import httpx
 
 from pension_pro_mcp.client import PensionProClient
 from pension_pro_mcp.tools.projects import (
-    search_projects, get_project_details, get_task_details, complete_task,
+    search_projects, get_project_details, get_task_group, get_task_details, complete_task,
     uncomplete_task, reassign_task, create_project_from_template,
 )
 
@@ -30,6 +30,24 @@ class TestSearchProjects:
         )
         result = await search_projects(client, plan_id=5)
         assert len(result) == 1
+
+
+class TestGetTaskGroup:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_returns_task_group_with_tasks(self, client: PensionProClient) -> None:
+        respx.get("https://api.pensionpro.com/v2/taskgroups/100").mock(
+            return_value=httpx.Response(200, json={"Id": 100, "Name": "Initial Setup"})
+        )
+        respx.get("https://api.pensionpro.com/v2/taskgroups/100/tasks").mock(
+            return_value=httpx.Response(200, json=[
+                {"Id": 1, "TaskName": "Step 1", "CompletedOn": None},
+                {"Id": 2, "TaskName": "Step 2", "CompletedOn": "2026-01-01T00:00:00"},
+            ])
+        )
+        result = await get_task_group(client, task_group_id=100)
+        assert result["task_group"]["Name"] == "Initial Setup"
+        assert len(result["tasks"]) == 2
 
 
 class TestGetTaskDetails:

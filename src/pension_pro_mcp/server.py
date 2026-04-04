@@ -10,7 +10,7 @@ from mcp.server.session import ServerSession
 from pension_pro_mcp.client import PensionProClient
 from pension_pro_mcp.tools.plans import search_plans, get_plan_details, get_plan_projects
 from pension_pro_mcp.tools.projects import (
-    search_projects, get_project_details, get_task_details, complete_task,
+    search_projects, get_project_details, get_task_group, get_task_details, complete_task,
     uncomplete_task, reassign_task, create_project_from_template,
 )
 from pension_pro_mcp.tools.clients import search_clients, get_client_details, search_contacts
@@ -112,6 +112,16 @@ async def _get_project_details(
     """Get a project with its task groups, tasks, participants, and notes."""
     client = ctx.request_context.lifespan_context.client
     return await get_project_details(client, project_id=project_id)
+
+
+@mcp.tool(name="get_task_group")
+async def _get_task_group(
+    ctx: Context[ServerSession, AppContext],
+    task_group_id: int,
+) -> dict:
+    """Get a task group with all its tasks."""
+    client = ctx.request_context.lifespan_context.client
+    return await get_task_group(client, task_group_id=task_group_id)
 
 
 @mcp.tool(name="get_task_details")
