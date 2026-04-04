@@ -11,13 +11,6 @@ from pension_pro_mcp.tools.projects import (
 )
 
 
-@pytest.fixture
-def client(monkeypatch: pytest.MonkeyPatch) -> PensionProClient:
-    monkeypatch.setenv("PENSION_PRO_API_KEY", "test-key")
-    monkeypatch.setenv("PENSION_PRO_USERNAME", "test-user")
-    return PensionProClient()
-
-
 class TestSearchProjects:
     @respx.mock
     @pytest.mark.asyncio

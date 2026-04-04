@@ -1,5 +1,6 @@
 """Plan lookup and search tools."""
 
+import asyncio
 from typing import Any
 
 from pension_pro_mcp.client import PensionProClient
@@ -63,21 +64,19 @@ async def get_plan_projects(
         f"/plans/{plan_id}/projects", filters=filters, top=100, max_total=500
     )
 
-    results: list[dict[str, Any]] = []
-    for project in projects:
+    async def _fetch_task_summary(project: dict[str, Any]) -> dict[str, Any]:
         project_id = project["Id"]
         tasks_data = await client.get(f"/projects/{project_id}/tasks")
         tasks = tasks_data if isinstance(tasks_data, list) else [tasks_data]
         completed = sum(1 for t in tasks if t.get("CompletedOn"))
         total = len(tasks)
-
-        results.append({
+        return {
             "project": project,
             "task_summary": {
                 "total": total,
                 "completed": completed,
                 "pending": total - completed,
             },
-        })
+        }
 
-    return results
+    return await asyncio.gather(*[_fetch_task_summary(p) for p in projects])

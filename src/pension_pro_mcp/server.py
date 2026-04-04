@@ -1,13 +1,21 @@
 """PensionPro MCP Server entry point."""
 
-import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.session import ServerSession
 
 from pension_pro_mcp.client import PensionProClient
+from pension_pro_mcp.tools.plans import search_plans, get_plan_details, get_plan_projects
+from pension_pro_mcp.tools.projects import (
+    search_projects, get_project_details, complete_task,
+    uncomplete_task, reassign_task, create_project_from_template,
+)
+from pension_pro_mcp.tools.clients import search_clients, get_client_details, search_contacts
+from pension_pro_mcp.tools.todos import search_todos, get_todo, create_todo, update_todo
+from pension_pro_mcp.tools.notes import add_note, get_notes
 
 
 @dataclass
@@ -31,18 +39,6 @@ mcp = FastMCP(
     "PensionPro",
     lifespan=app_lifespan,
 )
-
-from mcp.server.fastmcp import Context
-from mcp.server.session import ServerSession
-
-from pension_pro_mcp.tools.plans import search_plans, get_plan_details, get_plan_projects
-from pension_pro_mcp.tools.projects import (
-    search_projects, get_project_details, complete_task,
-    uncomplete_task, reassign_task, create_project_from_template,
-)
-from pension_pro_mcp.tools.clients import search_clients, get_client_details, search_contacts
-from pension_pro_mcp.tools.todos import search_todos, get_todo, create_todo, update_todo
-from pension_pro_mcp.tools.notes import add_note, get_notes
 
 
 @mcp.tool()

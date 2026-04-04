@@ -41,9 +41,11 @@ async def get_todo(
     """Get a to-do with its comments."""
     todo = await client.get(f"/todos/{todo_id}")
     comments = await client.get(f"/todos/{todo_id}/todocomments")
+    # The todo's link is included in the todo record as ToDoLink
     return {
         "todo": todo,
         "comments": comments if isinstance(comments, list) else [comments],
+        "link": todo.get("ToDoLink"),
     }
 
 

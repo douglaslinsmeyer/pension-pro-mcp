@@ -83,13 +83,16 @@ class PensionProClient:
         if filters:
             clauses: list[str] = []
             for key, value in filters.items():
+                escaped = value.replace("'", "''")
                 if key.endswith("__contains"):
                     field = key[: -len("__contains")]
-                    clauses.append(f"contains({field}, '{value}')")
+                    clauses.append(f"contains({field}, '{escaped}')")
                 elif value in ("true", "false"):
                     clauses.append(f"{key} eq {value}")
+                elif value.isdigit():
+                    clauses.append(f"{key} eq {value}")
                 else:
-                    clauses.append(f"{key} eq '{value}'")
+                    clauses.append(f"{key} eq '{escaped}'")
             params["$filter"] = " and ".join(clauses)
 
         if expand:

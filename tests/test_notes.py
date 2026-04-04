@@ -8,13 +8,6 @@ from pension_pro_mcp.client import PensionProClient
 from pension_pro_mcp.tools.notes import add_note, get_notes
 
 
-@pytest.fixture
-def client(monkeypatch: pytest.MonkeyPatch) -> PensionProClient:
-    monkeypatch.setenv("PENSION_PRO_API_KEY", "test-key")
-    monkeypatch.setenv("PENSION_PRO_USERNAME", "test-user")
-    return PensionProClient()
-
-
 class TestAddNote:
     @respx.mock
     @pytest.mark.asyncio

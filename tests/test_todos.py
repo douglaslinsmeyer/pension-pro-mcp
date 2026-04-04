@@ -8,13 +8,6 @@ from pension_pro_mcp.client import PensionProClient
 from pension_pro_mcp.tools.todos import search_todos, get_todo, create_todo, update_todo
 
 
-@pytest.fixture
-def client(monkeypatch: pytest.MonkeyPatch) -> PensionProClient:
-    monkeypatch.setenv("PENSION_PRO_API_KEY", "test-key")
-    monkeypatch.setenv("PENSION_PRO_USERNAME", "test-user")
-    return PensionProClient()
-
-
 class TestSearchTodos:
     @respx.mock
     @pytest.mark.asyncio
@@ -49,7 +42,10 @@ class TestGetTodo:
     @pytest.mark.asyncio
     async def test_returns_todo_with_comments(self, client: PensionProClient) -> None:
         respx.get("https://api.pensionpro.com/v2/todos/1").mock(
-            return_value=httpx.Response(200, json={"Id": 1, "ToDoName": "Review"})
+            return_value=httpx.Response(200, json={
+                "Id": 1, "ToDoName": "Review",
+                "ToDoLink": {"EntityId": 5, "EntityTypeId": 1},
+            })
         )
         respx.get("https://api.pensionpro.com/v2/todos/1/todocomments").mock(
             return_value=httpx.Response(200, json=[{"Id": 10, "CommentText": "Done"}])
@@ -57,6 +53,7 @@ class TestGetTodo:
         result = await get_todo(client, todo_id=1)
         assert result["todo"]["ToDoName"] == "Review"
         assert len(result["comments"]) == 1
+        assert result["link"]["EntityId"] == 5
 
 
 class TestCreateTodo:

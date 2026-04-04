@@ -7,13 +7,6 @@ import httpx
 from pension_pro_mcp.client import PensionProClient, PensionProError
 
 
-@pytest.fixture
-def client(monkeypatch: pytest.MonkeyPatch) -> PensionProClient:
-    monkeypatch.setenv("PENSION_PRO_API_KEY", "test-key")
-    monkeypatch.setenv("PENSION_PRO_USERNAME", "test-user")
-    return PensionProClient()
-
-
 class TestClientInit:
     def test_raises_when_missing_env_vars(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("PENSION_PRO_API_KEY", raising=False)
