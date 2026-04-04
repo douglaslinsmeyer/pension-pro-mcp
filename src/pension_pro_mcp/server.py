@@ -16,6 +16,7 @@ from pension_pro_mcp.tools.projects import (
 from pension_pro_mcp.tools.clients import search_clients, get_client_details, search_contacts
 from pension_pro_mcp.tools.todos import search_todos, get_todo, create_todo, update_todo
 from pension_pro_mcp.tools.notes import add_note, get_notes
+from pension_pro_mcp.tools.worktrays import get_worktrays, get_worktray
 
 
 @dataclass
@@ -309,6 +310,30 @@ async def _get_notes(
     """Get notes for an entity (plan, project, task, or contact). At least one entity ID must be provided."""
     client = ctx.request_context.lifespan_context.client
     return await get_notes(client, plan_id=plan_id, project_id=project_id, task_id=task_id, contact_id=contact_id, limit=limit)
+
+
+# --- Worktray tools ---
+
+
+@mcp.tool(name="get_worktrays")
+async def _get_worktrays(
+    ctx: Context[ServerSession, AppContext],
+    active_only: bool = True,
+    limit: int = 100,
+) -> list[dict]:
+    """List all worktrays. Set active_only=false to include inactive worktrays."""
+    client = ctx.request_context.lifespan_context.client
+    return await get_worktrays(client, active_only=active_only, limit=limit)
+
+
+@mcp.tool(name="get_worktray")
+async def _get_worktray(
+    ctx: Context[ServerSession, AppContext],
+    worktray_id: int,
+) -> dict:
+    """Get a worktray with its members and all active (incomplete) tasks routed to it."""
+    client = ctx.request_context.lifespan_context.client
+    return await get_worktray(client, worktray_id=worktray_id)
 
 
 def main() -> None:
