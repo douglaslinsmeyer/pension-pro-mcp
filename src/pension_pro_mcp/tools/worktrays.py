@@ -1,5 +1,6 @@
 """Worktray tools."""
 
+import asyncio
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -233,6 +234,63 @@ def _compute_queue_health(
         "oldest_active_task_age_days": oldest_age,
         "overdue_count": len(overdue_tasks),
         "overdue_tasks": overdue_tasks,
+    }
+
+
+async def get_worktray_member_stats(
+    client: PensionProClient,
+    worktray_id: int,
+    days_back: int = 30,
+) -> dict[str, Any]:
+    """Get per-member workload, performance, and queue health metrics for a worktray."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
+    cutoff_iso = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    completed_tasks, active_tasks, all_members = await asyncio.gather(
+        client.get_list(
+            "/tasks",
+            filters={"TeamId": str(worktray_id), "DateCompleted__ge": cutoff_iso},
+            expand=["AssignedTo", "TaskGroup($expand=Project)"],
+            top=1000,
+            max_total=10000,
+        ),
+        client.get_list(
+            "/tasks",
+            filters={"TeamId": str(worktray_id), "DateCompleted": "null"},
+            expand=["AssignedTo", "TaskGroup($expand=Project)"],
+            top=1000,
+            max_total=10000,
+        ),
+        client.get_list(
+            "/worktrayMembers",
+            expand=["Contact"],
+            top=1000,
+            max_total=5000,
+        ),
+    )
+
+    members = [m for m in all_members if m.get("WorktrayID") == worktray_id]
+
+    workload = _compute_workload_stats(active_tasks, members)
+    performance = _compute_performance_stats(completed_tasks, members)
+    queue_health = _compute_queue_health(active_tasks, completed_tasks, days_back)
+
+    # Merge per-member results from workload and performance
+    merged_members: list[dict[str, Any]] = []
+    perf_by_id = {m["contact_id"]: m["performance"] for m in performance["members"]}
+    for m in workload["members"]:
+        m["performance"] = perf_by_id.get(m["contact_id"], {})
+        merged_members.append(m)
+
+    return {
+        "worktray_id": worktray_id,
+        "period_days": days_back,
+        "members": merged_members,
+        "aggregate": {
+            "workload": workload["aggregate"],
+            "performance": performance["aggregate"],
+            "queue_health": queue_health,
+        },
     }
 
 

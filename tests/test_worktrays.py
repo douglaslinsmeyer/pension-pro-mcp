@@ -11,6 +11,7 @@ from pension_pro_mcp.tools.worktrays import get_worktrays, get_worktray
 from pension_pro_mcp.tools.worktrays import _compute_workload_stats
 from pension_pro_mcp.tools.worktrays import _compute_performance_stats
 from pension_pro_mcp.tools.worktrays import _compute_queue_health
+from pension_pro_mcp.tools.worktrays import get_worktray_member_stats
 
 
 class TestGetWorktrays:
@@ -249,3 +250,66 @@ class TestComputeQueueHealth:
         assert result["oldest_active_task_age_days"] == 0
         assert result["overdue_count"] == 0
         assert result["overdue_tasks"] == []
+
+
+class TestGetWorktrayMemberStats:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_assembles_full_response(self, client: PensionProClient) -> None:
+        respx.get("https://api.pensionpro.com/v2/worktrayMembers").mock(
+            return_value=httpx.Response(200, json=[
+                {"Id": 1, "contactID": 500, "WorktrayID": 100, "RoleID": 1, "Contact": {"FirstName": "Alice", "LastName": "Smith"}},
+                {"Id": 2, "contactID": 501, "WorktrayID": 100, "RoleID": 2, "Contact": {"FirstName": "Bob", "LastName": "Jones"}},
+                {"Id": 3, "contactID": 600, "WorktrayID": 999, "RoleID": 1, "Contact": {"FirstName": "Other", "LastName": "Person"}},
+            ])
+        )
+        # Active tasks route — matches filter with DateCompleted eq null
+        respx.get("https://api.pensionpro.com/v2/tasks").mock(
+            side_effect=lambda request: httpx.Response(200, json=[
+                {
+                    "Id": 10, "TaskName": "Review", "AssignedToId": 500,
+                    "TaskActive": "2026-04-01T00:00:00Z", "DateAdded": "2026-03-28T00:00:00Z",
+                    "DateCompleted": None, "AcknowledgeDate": None,
+                    "DaysToComp": 5, "Rejections": 0,
+                    "TaskGroup": {"Name": "G1", "Project": {"Name": "Annual Val", "Id": 50}},
+                },
+            ]) if "null" in str(request.url) else httpx.Response(200, json=[
+                {
+                    "Id": 20, "TaskName": "Review", "AssignedToId": 500,
+                    "TaskActive": "2026-03-10T00:00:00Z", "DateAdded": "2026-03-08T00:00:00Z",
+                    "DateCompleted": "2026-03-11T12:00:00Z", "AcknowledgeDate": "2026-03-10T01:00:00Z",
+                    "DaysToComp": 5, "Rejections": 0,
+                    "TaskGroup": {"Name": "G1", "Project": {"Name": "Annual Val", "Id": 50}},
+                },
+            ])
+        )
+
+        result = await get_worktray_member_stats(client, worktray_id=100, days_back=30)
+
+        assert result["worktray_id"] == 100
+        assert result["period_days"] == 30
+        assert len(result["members"]) == 2
+        alice = next(m for m in result["members"] if m["contact_id"] == 500)
+        assert alice["name"] == "Alice Smith"
+        assert alice["workload"]["active_task_count"] == 1
+        assert alice["performance"]["tasks_completed"] == 1
+        assert result["aggregate"]["workload"]["total_active"] == 1
+        assert result["aggregate"]["performance"]["total_completed"] == 1
+        assert "throughput_per_day" in result["aggregate"]["queue_health"]
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_empty_worktray(self, client: PensionProClient) -> None:
+        respx.get("https://api.pensionpro.com/v2/worktrayMembers").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        respx.get("https://api.pensionpro.com/v2/tasks").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+
+        result = await get_worktray_member_stats(client, worktray_id=100, days_back=30)
+
+        assert result["members"] == []
+        assert result["aggregate"]["workload"]["total_active"] == 0
+        assert result["aggregate"]["performance"]["total_completed"] == 0
+        assert result["aggregate"]["queue_health"]["throughput_per_day"] == 0.0
