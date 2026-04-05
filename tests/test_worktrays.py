@@ -9,6 +9,7 @@ import httpx
 from pension_pro_mcp.client import PensionProClient
 from pension_pro_mcp.tools.worktrays import get_worktrays, get_worktray
 from pension_pro_mcp.tools.worktrays import _compute_workload_stats
+from pension_pro_mcp.tools.worktrays import _compute_performance_stats
 
 
 class TestGetWorktrays:
@@ -109,3 +110,82 @@ class TestComputeWorkloadStats:
         result = _compute_workload_stats(active_tasks, members, now=datetime(2026, 4, 4, tzinfo=timezone.utc))
         task = result["members"][0]["workload"]["tasks"][0]
         assert task["age_days"] == 2  # from TaskActive, not DateAdded
+
+
+class TestComputePerformanceStats:
+    def test_computes_per_member_metrics(self) -> None:
+        members = [
+            {"contactID": 1, "RoleID": 10, "Contact": {"FirstName": "Alice", "LastName": "Smith"}},
+            {"contactID": 2, "RoleID": 20, "Contact": {"FirstName": "Bob", "LastName": "Jones"}},
+        ]
+        completed_tasks = [
+            {
+                "Id": 100, "TaskName": "Review", "AssignedToId": 1,
+                "TaskActive": "2026-03-01T00:00:00Z",
+                "DateCompleted": "2026-03-02T00:00:00Z",
+                "AcknowledgeDate": "2026-03-01T02:00:00Z",
+                "Rejections": 0,
+            },
+            {
+                "Id": 101, "TaskName": "Review", "AssignedToId": 1,
+                "TaskActive": "2026-03-05T00:00:00Z",
+                "DateCompleted": "2026-03-05T12:00:00Z",
+                "AcknowledgeDate": "2026-03-05T01:00:00Z",
+                "Rejections": 1,
+            },
+            {
+                "Id": 102, "TaskName": "Filing", "AssignedToId": 2,
+                "TaskActive": "2026-03-10T00:00:00Z",
+                "DateCompleted": "2026-03-12T00:00:00Z",
+                "AcknowledgeDate": None,
+                "Rejections": 0,
+            },
+        ]
+        result = _compute_performance_stats(completed_tasks, members)
+        alice = next(m for m in result["members"] if m["contact_id"] == 1)
+        assert alice["performance"]["tasks_completed"] == 2
+        # Task 100: 24h, Task 101: 12h -> avg 18h
+        assert alice["performance"]["avg_completion_hours"] == 18.0
+        # Task 100: 2h, Task 101: 1h -> avg 1.5h
+        assert alice["performance"]["avg_pickup_hours"] == 1.5
+        # 1 rejection / 2 tasks = 0.5
+        assert alice["performance"]["rejection_rate"] == 0.5
+        assert alice["performance"]["task_type_breakdown"] == [{"task_name": "Review", "count": 2}]
+
+        bob = next(m for m in result["members"] if m["contact_id"] == 2)
+        assert bob["performance"]["tasks_completed"] == 1
+        assert bob["performance"]["avg_pickup_hours"] is None  # no acknowledge dates
+
+        assert result["aggregate"]["total_completed"] == 3
+
+    def test_member_with_zero_completions(self) -> None:
+        members = [
+            {"contactID": 1, "RoleID": 10, "Contact": {"FirstName": "Alice", "LastName": "Smith"}},
+        ]
+        result = _compute_performance_stats([], members)
+        alice = result["members"][0]
+        assert alice["performance"]["tasks_completed"] == 0
+        assert alice["performance"]["avg_completion_hours"] is None
+        assert alice["performance"]["avg_pickup_hours"] is None
+        assert alice["performance"]["rejection_rate"] == 0.0
+        assert alice["performance"]["task_type_breakdown"] == []
+        assert result["aggregate"]["total_completed"] == 0
+        assert result["aggregate"]["team_avg_completion_hours"] is None
+
+    def test_tasks_with_missing_task_active(self) -> None:
+        members = [
+            {"contactID": 1, "RoleID": 10, "Contact": {"FirstName": "A", "LastName": "B"}},
+        ]
+        completed_tasks = [
+            {
+                "Id": 100, "TaskName": "Review", "AssignedToId": 1,
+                "TaskActive": None,
+                "DateCompleted": "2026-03-02T00:00:00Z",
+                "AcknowledgeDate": None,
+                "Rejections": 0,
+            },
+        ]
+        result = _compute_performance_stats(completed_tasks, members)
+        alice = result["members"][0]
+        assert alice["performance"]["tasks_completed"] == 1
+        assert alice["performance"]["avg_completion_hours"] is None  # can't compute without TaskActive

@@ -83,6 +83,94 @@ def _compute_workload_stats(
     }
 
 
+def _compute_performance_stats(
+    completed_tasks: list[dict[str, Any]],
+    members: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Compute per-member performance stats from completed tasks."""
+    # Build member scaffolding
+    member_map: dict[int, dict[str, Any]] = {}
+    member_list: list[dict[str, Any]] = []
+    for m in members:
+        cid = m["contactID"]
+        contact = m.get("Contact") or {}
+        entry = {
+            "contact_id": cid,
+            "name": f"{contact.get('FirstName', '')} {contact.get('LastName', '')}".strip(),
+            "role_id": m["RoleID"],
+            "performance": {
+                "tasks_completed": 0,
+                "avg_completion_hours": None,
+                "avg_pickup_hours": None,
+                "rejection_rate": 0.0,
+                "task_type_breakdown": [],
+            },
+        }
+        member_map[cid] = entry
+        member_list.append(entry)
+
+    # Group tasks by assignee
+    tasks_by_assignee: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for task in completed_tasks:
+        assignee = task.get("AssignedToId")
+        if assignee is not None:
+            tasks_by_assignee[assignee].append(task)
+
+    all_completion_hours: list[float] = []
+
+    for cid, entry in member_map.items():
+        tasks = tasks_by_assignee.get(cid, [])
+        entry["performance"]["tasks_completed"] = len(tasks)
+
+        completion_hours: list[float] = []
+        pickup_hours: list[float] = []
+        total_rejections = 0
+        type_counts: Counter[str] = Counter()
+
+        for task in tasks:
+            active = _parse_dt(task.get("TaskActive"))
+            completed = _parse_dt(task.get("DateCompleted"))
+            ack = _parse_dt(task.get("AcknowledgeDate"))
+
+            if active and completed:
+                hours = (completed - active).total_seconds() / 3600
+                completion_hours.append(hours)
+                all_completion_hours.append(hours)
+
+            if active and ack:
+                pickup_hours.append((ack - active).total_seconds() / 3600)
+
+            total_rejections += task.get("Rejections") or 0
+            type_counts[task.get("TaskName", "Unknown")] += 1
+
+        if completion_hours:
+            entry["performance"]["avg_completion_hours"] = round(
+                sum(completion_hours) / len(completion_hours), 1
+            )
+        if pickup_hours:
+            entry["performance"]["avg_pickup_hours"] = round(
+                sum(pickup_hours) / len(pickup_hours), 1
+            )
+        if tasks:
+            entry["performance"]["rejection_rate"] = round(total_rejections / len(tasks), 2)
+        entry["performance"]["task_type_breakdown"] = [
+            {"task_name": name, "count": count}
+            for name, count in type_counts.most_common()
+        ]
+
+    team_avg = None
+    if all_completion_hours:
+        team_avg = round(sum(all_completion_hours) / len(all_completion_hours), 1)
+
+    return {
+        "members": member_list,
+        "aggregate": {
+            "total_completed": len(completed_tasks),
+            "team_avg_completion_hours": team_avg,
+        },
+    }
+
+
 async def get_worktrays(
     client: PensionProClient,
     active_only: bool = True,
