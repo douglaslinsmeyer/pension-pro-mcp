@@ -1,8 +1,11 @@
 """Analytics tools for cross-cutting workflow metrics."""
 
+import asyncio
 import statistics
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
+
+from pension_pro_mcp.client import PensionProClient
 
 
 def _parse_dt(value: str | None) -> datetime | None:
@@ -157,3 +160,77 @@ def _aggregate_step_durations(
         bottleneck["is_bottleneck"] = True
 
     return results
+
+
+async def get_task_group_cycle_times(
+    client: PensionProClient,
+    days_back: int = 90,
+    plan_id: int | None = None,
+    template_id: int | None = None,
+    include_steps: bool = False,
+) -> dict[str, Any]:
+    """Compute task group cycle times segmented by project template.
+
+    Fetches completed task groups within the lookback window, groups them by
+    project template, and computes cycle time statistics. When include_steps
+    is True, also fetches tasks per group to identify per-step bottlenecks.
+    """
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=days_back)
+    cutoff_iso = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    filters: dict[str, str] = {"DateCompleted__ge": cutoff_iso}
+    if plan_id is not None:
+        filters["Project/PlanId"] = str(plan_id)
+    if template_id is not None:
+        filters["Project/ProjectTemplateId"] = str(template_id)
+
+    task_groups = await client.get_list(
+        "/taskgroups",
+        filters=filters,
+        expand=["Project($expand=ProjectTemplate)"],
+        top=1000,
+        max_total=10000,
+    )
+
+    by_template = _compute_cycle_times(task_groups)
+
+    # Fetch per-step data if requested
+    if include_steps and task_groups:
+        # Group task_group IDs by template
+        groups_by_template: dict[int, list[int]] = {}
+        for tg in task_groups:
+            project = tg.get("Project") or {}
+            tid = project.get("ProjectTemplateId")
+            if tid is not None and _parse_dt(tg.get("DateActivated")):
+                groups_by_template.setdefault(tid, []).append(tg["Id"])
+
+        sem = asyncio.Semaphore(10)
+
+        async def fetch_tasks(group_id: int) -> list[dict[str, Any]]:
+            async with sem:
+                return await client.get_list(f"/taskgroups/{group_id}/tasks")
+
+        for template_entry in by_template:
+            tid = template_entry["template_id"]
+            group_ids = groups_by_template.get(tid, [])
+            task_lists = await asyncio.gather(
+                *(fetch_tasks(gid) for gid in group_ids)
+            )
+            all_steps = [_compute_step_durations(tasks) for tasks in task_lists]
+            # Filter out empty step lists
+            all_steps = [s for s in all_steps if s]
+            template_entry["steps"] = _aggregate_step_durations(all_steps)
+
+    # Count total completed groups (those with valid DateActivated)
+    valid_count = sum(t["groups_completed"] for t in by_template)
+
+    return {
+        "by_template": by_template,
+        "summary": {
+            "total_groups_completed": valid_count,
+            "templates_analyzed": len(by_template),
+            "period_days": days_back,
+            "cutoff_date": cutoff_iso,
+        },
+    }
