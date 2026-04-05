@@ -67,7 +67,7 @@ async def _resolve_employee(
     """
     contacts = await client.get_list(
         "/contacts",
-        filters={"LastName__contains": name, "SystemEmployee": "true"},
+        filters={"LastName__contains": name},
         expand=["Employee"],
         top=50,
         max_total=50,
