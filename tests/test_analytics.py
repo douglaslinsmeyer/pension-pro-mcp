@@ -21,30 +21,24 @@ class TestComputeCycleTimes:
                 "DateActivated": "2026-01-01T00:00:00Z",
                 "DateCompleted": "2026-01-09T00:00:00Z",
                 "DateDue": "2026-01-15T00:00:00Z",
-                "Project": {
-                    "ProjectTemplateId": 10,
-                    "ProjectTemplate": {"Name": "DC Distribution Rqst"},
-                },
+                "_template_id": 10,
+                "_template_name": "DC Distribution Rqst",
             },
             {
                 "Id": 2,
                 "DateActivated": "2026-01-05T00:00:00Z",
                 "DateCompleted": "2026-01-15T00:00:00Z",
                 "DateDue": "2026-01-10T00:00:00Z",
-                "Project": {
-                    "ProjectTemplateId": 10,
-                    "ProjectTemplate": {"Name": "DC Distribution Rqst"},
-                },
+                "_template_id": 10,
+                "_template_name": "DC Distribution Rqst",
             },
             {
                 "Id": 3,
                 "DateActivated": "2026-02-01T00:00:00Z",
                 "DateCompleted": "2026-02-04T00:00:00Z",
                 "DateDue": "2026-02-10T00:00:00Z",
-                "Project": {
-                    "ProjectTemplateId": 20,
-                    "ProjectTemplate": {"Name": "Annual Valuation"},
-                },
+                "_template_id": 20,
+                "_template_name": "Annual Valuation",
             },
         ]
 
@@ -52,16 +46,15 @@ class TestComputeCycleTimes:
 
         assert len(result) == 2
 
-        # Sorted by groups_completed desc — template 10 has 2, template 20 has 1
         dc = result[0]
         assert dc["template_id"] == 10
         assert dc["template_name"] == "DC Distribution Rqst"
         assert dc["groups_completed"] == 2
-        assert dc["avg_cycle_days"] == 9.0  # (8 + 10) / 2
-        assert dc["median_cycle_days"] == 9.0  # median of [8, 10]
+        assert dc["avg_cycle_days"] == 9.0
+        assert dc["median_cycle_days"] == 9.0
         assert dc["min_cycle_days"] == 8.0
         assert dc["max_cycle_days"] == 10.0
-        assert dc["sla_adherence_pct"] == 50.0  # 1 of 2 met SLA
+        assert dc["sla_adherence_pct"] == 50.0
         assert dc["groups_without_due_date"] == 0
 
         annual = result[1]
@@ -78,10 +71,8 @@ class TestComputeCycleTimes:
                 "DateAdded": "2026-01-01T00:00:00Z",
                 "DateCompleted": "2026-01-09T00:00:00Z",
                 "DateDue": "2026-01-15T00:00:00Z",
-                "Project": {
-                    "ProjectTemplateId": 10,
-                    "ProjectTemplate": {"Name": "Template A"},
-                },
+                "_template_id": 10,
+                "_template_name": "Template A",
             },
         ]
         result = _compute_cycle_times(task_groups)
@@ -96,10 +87,8 @@ class TestComputeCycleTimes:
                 "DateAdded": None,
                 "DateCompleted": "2026-01-09T00:00:00Z",
                 "DateDue": "2026-01-15T00:00:00Z",
-                "Project": {
-                    "ProjectTemplateId": 10,
-                    "ProjectTemplate": {"Name": "Template A"},
-                },
+                "_template_id": 10,
+                "_template_name": "Template A",
             },
         ]
         result = _compute_cycle_times(task_groups)
@@ -112,10 +101,8 @@ class TestComputeCycleTimes:
                 "DateActivated": "2026-01-01T00:00:00Z",
                 "DateCompleted": "2026-01-05T00:00:00Z",
                 "DateDue": None,
-                "Project": {
-                    "ProjectTemplateId": 10,
-                    "ProjectTemplate": {"Name": "Template A"},
-                },
+                "_template_id": 10,
+                "_template_name": "Template A",
             },
         ]
         result = _compute_cycle_times(task_groups)
@@ -209,7 +196,7 @@ class TestComputeStepDurations:
                 "Order": 2,
                 "TaskName": "Bad Data Step",
                 "DateActivated": "2026-01-05T00:00:00Z",
-                "DateCompleted": "2026-01-03T00:00:00Z",  # completed before activated
+                "DateCompleted": "2026-01-03T00:00:00Z",
             },
         ]
 
@@ -221,13 +208,11 @@ class TestComputeStepDurations:
 class TestAggregateStepDurations:
     def test_aggregates_across_groups_and_finds_bottleneck(self) -> None:
         all_steps = [
-            # Group 1
             [
                 {"order": 1, "task_name": "Review", "duration_days": 1.0},
                 {"order": 2, "task_name": "Process", "duration_days": 3.0},
                 {"order": 3, "task_name": "Confirm", "duration_days": 1.0},
             ],
-            # Group 2
             [
                 {"order": 1, "task_name": "Review", "duration_days": 2.0},
                 {"order": 2, "task_name": "Process", "duration_days": 4.0},
@@ -240,14 +225,14 @@ class TestAggregateStepDurations:
         assert len(result) == 3
         assert result[0]["order"] == 1
         assert result[0]["task_name"] == "Review"
-        assert result[0]["avg_duration_days"] == 1.5  # (1 + 2) / 2
+        assert result[0]["avg_duration_days"] == 1.5
         assert result[0]["median_duration_days"] == 1.5
         assert result[0]["is_bottleneck"] is False
 
         assert result[1]["order"] == 2
         assert result[1]["task_name"] == "Process"
-        assert result[1]["avg_duration_days"] == 3.5  # (3 + 4) / 2
-        assert result[1]["is_bottleneck"] is True  # highest avg
+        assert result[1]["avg_duration_days"] == 3.5
+        assert result[1]["is_bottleneck"] is True
 
         assert result[2]["order"] == 3
         assert result[2]["is_bottleneck"] is False
@@ -271,27 +256,29 @@ class TestGetTaskGroupCycleTimes:
     @respx.mock
     @pytest.mark.asyncio
     async def test_returns_cycle_times_by_template(self, client: PensionProClient) -> None:
-        respx.get("https://api.pensionpro.com/v2/taskgroups").mock(
+        respx.get("https://api.pensionpro.com/v2/projects").mock(
+            return_value=httpx.Response(200, json=[
+                {
+                    "Id": 100,
+                    "ProjectTemplateId": 10,
+                    "CombinedName": "DC Distribution Rqst",
+                    "CompletedOn": "2026-01-20T00:00:00Z",
+                },
+            ])
+        )
+        respx.get("https://api.pensionpro.com/v2/projects/100/taskgroups").mock(
             return_value=httpx.Response(200, json=[
                 {
                     "Id": 1,
-                    "DateActivated": "2026-01-01T00:00:00Z",
+                    "DateAdded": "2026-01-01T00:00:00Z",
                     "DateCompleted": "2026-01-06T00:00:00Z",
                     "DateDue": "2026-01-10T00:00:00Z",
-                    "Project": {
-                        "ProjectTemplateId": 10,
-                        "ProjectTemplate": {"Name": "DC Distribution Rqst"},
-                    },
                 },
                 {
                     "Id": 2,
-                    "DateActivated": "2026-01-10T00:00:00Z",
+                    "DateAdded": "2026-01-10T00:00:00Z",
                     "DateCompleted": "2026-01-20T00:00:00Z",
                     "DateDue": "2026-01-15T00:00:00Z",
-                    "Project": {
-                        "ProjectTemplateId": 10,
-                        "ProjectTemplate": {"Name": "DC Distribution Rqst"},
-                    },
                 },
             ])
         )
@@ -304,24 +291,30 @@ class TestGetTaskGroupCycleTimes:
 
         dc = result["by_template"][0]
         assert dc["template_id"] == 10
-        assert dc["avg_cycle_days"] == 7.5  # (5 + 10) / 2
-        assert dc["sla_adherence_pct"] == 50.0  # 1 of 2 met SLA
+        assert dc["avg_cycle_days"] == 7.5
+        assert dc["sla_adherence_pct"] == 50.0
         assert "steps" not in dc
 
     @respx.mock
     @pytest.mark.asyncio
     async def test_includes_step_breakdown(self, client: PensionProClient) -> None:
-        respx.get("https://api.pensionpro.com/v2/taskgroups").mock(
+        respx.get("https://api.pensionpro.com/v2/projects").mock(
+            return_value=httpx.Response(200, json=[
+                {
+                    "Id": 100,
+                    "ProjectTemplateId": 10,
+                    "CombinedName": "DC Distribution Rqst",
+                    "CompletedOn": "2026-01-06T00:00:00Z",
+                },
+            ])
+        )
+        respx.get("https://api.pensionpro.com/v2/projects/100/taskgroups").mock(
             return_value=httpx.Response(200, json=[
                 {
                     "Id": 1,
-                    "DateActivated": "2026-01-01T00:00:00Z",
+                    "DateAdded": "2026-01-01T00:00:00Z",
                     "DateCompleted": "2026-01-06T00:00:00Z",
                     "DateDue": "2026-01-10T00:00:00Z",
-                    "Project": {
-                        "ProjectTemplateId": 10,
-                        "ProjectTemplate": {"Name": "DC Distribution Rqst"},
-                    },
                 },
             ])
         )
@@ -361,7 +354,7 @@ class TestGetTaskGroupCycleTimes:
     async def test_applies_plan_and_template_filters(self, client: PensionProClient) -> None:
         from urllib.parse import unquote
 
-        route = respx.get("https://api.pensionpro.com/v2/taskgroups").mock(
+        plan_route = respx.get("https://api.pensionpro.com/v2/plans/5/projects").mock(
             return_value=httpx.Response(200, json=[])
         )
 
@@ -369,15 +362,15 @@ class TestGetTaskGroupCycleTimes:
             client, days_back=30, plan_id=5, template_id=10
         )
 
-        assert route.called
-        url = unquote(str(route.calls[0].request.url))
-        assert "Project/PlanId eq 5" in url
-        assert "Project/ProjectTemplateId eq 10" in url
+        assert plan_route.called
+        url = unquote(str(plan_route.calls[0].request.url))
+        assert "plans/5/projects" in url
+        assert "ProjectTemplateId eq 10" in url
 
     @respx.mock
     @pytest.mark.asyncio
     async def test_empty_results(self, client: PensionProClient) -> None:
-        respx.get("https://api.pensionpro.com/v2/taskgroups").mock(
+        respx.get("https://api.pensionpro.com/v2/projects").mock(
             return_value=httpx.Response(200, json=[])
         )
 

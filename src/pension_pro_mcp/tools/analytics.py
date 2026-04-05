@@ -29,10 +29,11 @@ def _parse_dt(value: str | None) -> datetime | None:
 def _compute_cycle_times(task_groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Group completed task groups by project template and compute cycle time stats.
 
-    Cycle time uses DateActivated (preferred) or DateAdded as the start date.
-    Returns a list of per-template stat dicts, sorted by groups_completed descending.
+    Each task group must have a "_template_id" and "_template_name" key injected
+    by the caller. Cycle time uses DateActivated (preferred) or DateAdded as the
+    start date. Returns a list of per-template stat dicts, sorted by
+    groups_completed descending.
     """
-    # Group by template
     by_template: dict[int, dict[str, Any]] = {}
     for tg in task_groups:
         activated = _parse_dt(tg.get("DateActivated")) or _parse_dt(tg.get("DateAdded"))
@@ -40,13 +41,10 @@ def _compute_cycle_times(task_groups: list[dict[str, Any]]) -> list[dict[str, An
         if not activated or not completed:
             continue
 
-        project = tg.get("Project") or {}
-        template_id = project.get("ProjectTemplateId")
+        template_id = tg.get("_template_id")
+        template_name = tg.get("_template_name", "Unknown")
         if template_id is None:
             continue
-
-        template = project.get("ProjectTemplate") or {}
-        template_name = template.get("Name", "Unknown")
 
         if template_id not in by_template:
             by_template[template_id] = {
@@ -70,7 +68,6 @@ def _compute_cycle_times(task_groups: list[dict[str, Any]]) -> list[dict[str, An
         else:
             entry["groups_without_due_date"] += 1
 
-    # Build result
     results: list[dict[str, Any]] = []
     for entry in by_template.values():
         days = entry["cycle_days"]
@@ -133,7 +130,6 @@ def _aggregate_step_durations(
     if not all_steps:
         return []
 
-    # Collect durations by order
     by_order: dict[int, dict[str, Any]] = {}
     for group_steps in all_steps:
         for step in group_steps:
@@ -146,7 +142,6 @@ def _aggregate_step_durations(
                 }
             by_order[order]["durations"].append(step["duration_days"])
 
-    # Compute stats
     results: list[dict[str, Any]] = []
     for entry in sorted(by_order.values(), key=lambda x: x["order"]):
         durations = entry["durations"]
@@ -155,10 +150,9 @@ def _aggregate_step_durations(
             "task_name": entry["task_name"],
             "avg_duration_days": round(statistics.mean(durations), 1),
             "median_duration_days": round(statistics.median(durations), 1),
-            "is_bottleneck": False,  # set below
+            "is_bottleneck": False,
         })
 
-    # Mark bottleneck
     if results:
         bottleneck = max(results, key=lambda x: x["avg_duration_days"])
         bottleneck["is_bottleneck"] = True
@@ -175,47 +169,67 @@ async def get_task_group_cycle_times(
 ) -> dict[str, Any]:
     """Compute task group cycle times segmented by project template.
 
-    Fetches completed task groups within the lookback window, groups them by
-    project template, and computes cycle time statistics. When include_steps
-    is True, also fetches tasks per group to identify per-step bottlenecks.
+    Fetches completed projects within the lookback window, then retrieves their
+    task groups via project-scoped endpoints. Groups by project template and
+    computes cycle time statistics. When include_steps is True, also fetches
+    tasks per group to identify per-step bottlenecks.
     """
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(days=days_back)
     cutoff_iso = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    filters: dict[str, str] = {"DateCompleted__ge": cutoff_iso}
-    if plan_id is not None:
-        filters["Project/PlanId"] = str(plan_id)
+    # Fetch completed projects within the window
+    filters: dict[str, str] = {"CompletedOn__ge": cutoff_iso}
     if template_id is not None:
-        filters["Project/ProjectTemplateId"] = str(template_id)
+        filters["ProjectTemplateId"] = str(template_id)
 
-    task_groups = await client.get_list(
-        "/taskgroups",
+    endpoint = f"/plans/{plan_id}/projects" if plan_id else "/projects"
+    projects = await client.get_list(
+        endpoint,
         filters=filters,
-        expand=["Project($expand=ProjectTemplate)"],
         top=1000,
         max_total=10000,
     )
 
-    by_template = _compute_cycle_times(task_groups)
+    # Fetch task groups for each project, concurrency-limited
+    sem = asyncio.Semaphore(10)
+
+    async def fetch_task_groups(project: dict[str, Any]) -> list[dict[str, Any]]:
+        async with sem:
+            groups = await client.get_list(
+                f"/projects/{project['Id']}/taskgroups"
+            )
+            # Inject template info from the parent project into each group
+            for g in groups:
+                g["_template_id"] = project.get("ProjectTemplateId")
+                g["_template_name"] = project.get("CombinedName") or project.get("Name", "Unknown")
+            return groups
+
+    project_group_lists = await asyncio.gather(
+        *(fetch_task_groups(p) for p in projects)
+    )
+
+    # Flatten all task groups
+    all_task_groups: list[dict[str, Any]] = []
+    for groups in project_group_lists:
+        all_task_groups.extend(groups)
+
+    by_template = _compute_cycle_times(all_task_groups)
 
     # Fetch per-step data if requested
-    if include_steps and task_groups:
-        if len(task_groups) > 500:
+    if include_steps and all_task_groups:
+        if len(all_task_groups) > 500:
             logger.warning(
                 "include_steps=True with %d task groups — this may be slow",
-                len(task_groups),
+                len(all_task_groups),
             )
         # Group task_group IDs by template
         groups_by_template: dict[int, list[int]] = {}
-        for tg in task_groups:
-            project = tg.get("Project") or {}
-            tid = project.get("ProjectTemplateId")
+        for tg in all_task_groups:
+            tid = tg.get("_template_id")
             start = _parse_dt(tg.get("DateActivated")) or _parse_dt(tg.get("DateAdded"))
             if tid is not None and start:
                 groups_by_template.setdefault(tid, []).append(tg["Id"])
-
-        sem = asyncio.Semaphore(10)
 
         async def fetch_tasks(group_id: int) -> list[dict[str, Any]]:
             async with sem:
@@ -228,11 +242,9 @@ async def get_task_group_cycle_times(
                 *(fetch_tasks(gid) for gid in group_ids)
             )
             all_steps = [_compute_step_durations(tasks) for tasks in task_lists]
-            # Filter out empty step lists
             all_steps = [s for s in all_steps if s]
             template_entry["steps"] = _aggregate_step_durations(all_steps)
 
-    # Count total completed groups (those with valid DateActivated)
     valid_count = sum(t["groups_completed"] for t in by_template)
 
     return {
