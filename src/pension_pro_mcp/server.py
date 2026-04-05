@@ -23,7 +23,7 @@ from pension_pro_mcp.tools.projects import (
 from pension_pro_mcp.tools.clients import search_clients, get_client_details, search_contacts
 from pension_pro_mcp.tools.todos import search_todos, get_todo, create_todo, update_todo
 from pension_pro_mcp.tools.notes import add_note, get_notes
-from pension_pro_mcp.tools.worktrays import get_worktrays, get_worktray
+from pension_pro_mcp.tools.worktrays import get_worktrays, get_worktray, get_worktray_member_stats
 from pension_pro_mcp.tools.swagger import (
     SWAGGER_URL, search_paths, get_endpoint, search_schemas, get_schema,
 )
@@ -447,6 +447,23 @@ async def _get_worktray(
     """Get a worktray with its members and all active (incomplete) tasks routed to it."""
     client = ctx.request_context.lifespan_context.client
     return await get_worktray(client, worktray_id=worktray_id)
+
+
+@mcp.tool(name="get_worktray_member_stats")
+@pipeline.wrap
+async def _get_worktray_member_stats(
+    ctx: Context[ServerSession, AppContext],
+    worktray_id: int,
+    days_back: int = 30,
+) -> dict:
+    """Get per-member workload, performance, and queue health metrics for a worktray.
+
+    Analyzes completed tasks within the lookback window and current active tasks.
+    Returns per-member stats (task counts, avg completion time, pickup time, rejection rate)
+    plus aggregate queue health (throughput, intake rate, overdue tasks).
+    """
+    client = ctx.request_context.lifespan_context.client
+    return await get_worktray_member_stats(client, worktray_id=worktray_id, days_back=days_back)
 
 
 # --- Swagger / API reference tools ---
