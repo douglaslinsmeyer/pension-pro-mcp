@@ -179,7 +179,10 @@ async def get_task_group_cycle_times(
     cutoff_iso = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # Fetch completed projects within the window
-    filters: dict[str, str] = {"CompletedOn__ge": cutoff_iso}
+    filters: dict[str, str] = {
+        "CompletedOn__ge": cutoff_iso,
+        "ProjectStatus.DisplayName": "Completed",
+    }
     if template_id is not None:
         filters["ProjectTemplateId"] = str(template_id)
 
