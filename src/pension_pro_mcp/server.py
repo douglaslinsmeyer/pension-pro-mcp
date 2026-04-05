@@ -27,6 +27,7 @@ from pension_pro_mcp.tools.worktrays import (
     get_worktrays, get_worktray, get_worktray_member_stats, read_cached_stats,
     get_employee_stats, read_cached_employee_stats,
 )
+from pension_pro_mcp.tools.analytics import get_task_group_cycle_times
 from pension_pro_mcp.tools.swagger import (
     SWAGGER_URL, search_paths, get_endpoint, search_schemas, get_schema,
 )
@@ -511,6 +512,38 @@ def _employee_stats_resource(contact_id: int) -> str:
     if result is None:
         return json.dumps({"error": f"No cached stats for employee {contact_id}. Run get_employee_stats first."})
     return json.dumps(result)
+
+
+# --- Analytics tools ---
+
+
+@mcp.tool(name="get_task_group_cycle_times")
+@pipeline.wrap
+async def _get_task_group_cycle_times(
+    ctx: Context[ServerSession, AppContext],
+    days_back: int = 90,
+    plan_id: int | None = None,
+    template_id: int | None = None,
+    include_steps: bool = False,
+) -> dict:
+    """Compute task group cycle times segmented by project template.
+
+    Analyzes completed task groups within the lookback window to reveal which
+    workflows are slow and which steps are bottlenecks. Returns per-template
+    stats including avg/median/min/max cycle time and SLA adherence.
+
+    Set include_steps=true to fetch per-task step durations and identify the
+    bottleneck step within each template. This makes additional API calls
+    (one per task group) and may be slow for large result sets.
+    """
+    client = ctx.request_context.lifespan_context.client
+    return await get_task_group_cycle_times(
+        client,
+        days_back=days_back,
+        plan_id=plan_id,
+        template_id=template_id,
+        include_steps=include_steps,
+    )
 
 
 # --- Swagger / API reference tools ---
