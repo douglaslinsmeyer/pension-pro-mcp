@@ -63,7 +63,6 @@ def _compute_workload_stats(
             "role_id": m["RoleID"],
             "workload": {
                 "active_task_count": 0,
-                "tasks": [],
             },
         }
         member_map[cid] = entry
@@ -76,11 +75,6 @@ def _compute_workload_stats(
             unassigned += 1
         if assignee and assignee in member_map:
             member_map[assignee]["workload"]["active_task_count"] += 1
-            member_map[assignee]["workload"]["tasks"].append({
-                "task_name": task.get("TaskName", "Unknown"),
-                "project": _task_project_name(task),
-                "age_days": _task_age_days(task, now),
-            })
 
     return {
         "members": member_list,
@@ -218,29 +212,44 @@ def _compute_queue_health(
         if age > oldest_age:
             oldest_age = age
 
-    # Overdue tasks
-    overdue_tasks: list[dict[str, Any]] = []
+    # Overdue tasks — summarized by task type
+    overdue_count = 0
+    overdue_by_type: dict[str, dict[str, Any]] = {}
     for task in active_tasks:
         days_to_comp = task.get("DaysToComp")
         if days_to_comp is None:
             continue
         age = _task_age_days(task, now)
         if age > days_to_comp:
-            overdue_tasks.append({
-                "task_id": task["Id"],
-                "task_name": task.get("TaskName", "Unknown"),
-                "project": _task_project_name(task),
-                "age_days": age,
-                "days_to_comp": days_to_comp,
-            })
+            overdue_count += 1
+            name = task.get("TaskName", "Unknown")
+            if name not in overdue_by_type:
+                overdue_by_type[name] = {"count": 0, "total_age_days": 0, "total_days_over_sla": 0}
+            overdue_by_type[name]["count"] += 1
+            overdue_by_type[name]["total_age_days"] += age
+            overdue_by_type[name]["total_days_over_sla"] += age - days_to_comp
+
+    overdue_summary = sorted(
+        [
+            {
+                "task_name": name,
+                "count": info["count"],
+                "avg_age_days": round(info["total_age_days"] / info["count"]),
+                "avg_days_over_sla": round(info["total_days_over_sla"] / info["count"]),
+            }
+            for name, info in overdue_by_type.items()
+        ],
+        key=lambda x: x["count"],
+        reverse=True,
+    )
 
     return {
         "throughput_per_day": throughput_per_day,
         "intake_per_day": intake_per_day,
         "queue_growing": intake_per_day > throughput_per_day,
         "oldest_active_task_age_days": oldest_age,
-        "overdue_count": len(overdue_tasks),
-        "overdue_tasks": overdue_tasks,
+        "overdue_count": overdue_count,
+        "overdue_by_type": overdue_summary,
     }
 
 

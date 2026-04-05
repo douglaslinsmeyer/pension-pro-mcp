@@ -82,7 +82,6 @@ class TestComputeWorkloadStats:
         result = _compute_workload_stats(active_tasks, members)
         alice = next(m for m in result["members"] if m["contact_id"] == 1)
         assert alice["workload"]["active_task_count"] == 2
-        assert len(alice["workload"]["tasks"]) == 2
         bob = next(m for m in result["members"] if m["contact_id"] == 2)
         assert bob["workload"]["active_task_count"] == 0
         assert result["aggregate"]["total_active"] == 3
@@ -97,22 +96,6 @@ class TestComputeWorkloadStats:
         assert alice["workload"]["active_task_count"] == 0
         assert result["aggregate"]["total_active"] == 0
         assert result["aggregate"]["unassigned_count"] == 0
-
-    def test_task_age_uses_task_active_over_date_added(self) -> None:
-        members = [
-            {"contactID": 1, "RoleID": 10, "Contact": {"FirstName": "A", "LastName": "B"}},
-        ]
-        active_tasks = [
-            {
-                "Id": 100, "TaskName": "Review", "AssignedToId": 1,
-                "TaskActive": "2026-04-02T00:00:00Z", "DateAdded": "2026-03-01T00:00:00Z",
-                "TaskGroup": {"Name": "G", "Project": {"Name": "P", "Id": 1}},
-            },
-        ]
-        result = _compute_workload_stats(active_tasks, members, now=datetime(2026, 4, 4, tzinfo=timezone.utc))
-        task = result["members"][0]["workload"]["tasks"][0]
-        assert task["age_days"] == 2  # from TaskActive, not DateAdded
-
 
 class TestComputePerformanceStats:
     def test_computes_per_member_metrics(self) -> None:
@@ -237,8 +220,10 @@ class TestComputeQueueHealth:
         ]
         result = _compute_queue_health(active_tasks, [], days_back=30, now=now)
         assert result["overdue_count"] == 1
-        assert result["overdue_tasks"][0]["task_id"] == 10
-        assert result["overdue_tasks"][0]["project"] == "Proj A"
+        assert len(result["overdue_by_type"]) == 1
+        assert result["overdue_by_type"][0]["task_name"] == "Slow Task"
+        assert result["overdue_by_type"][0]["count"] == 1
+        assert result["overdue_by_type"][0]["avg_days_over_sla"] == 12  # 15 days old - 3 DaysToComp
         assert result["oldest_active_task_age_days"] == 34  # from task 12: Mar 1 -> Apr 4
 
     def test_empty_worktray(self) -> None:
@@ -249,7 +234,7 @@ class TestComputeQueueHealth:
         assert result["queue_growing"] is False
         assert result["oldest_active_task_age_days"] == 0
         assert result["overdue_count"] == 0
-        assert result["overdue_tasks"] == []
+        assert result["overdue_by_type"] == []
 
 
 class TestGetWorktrayMemberStats:
