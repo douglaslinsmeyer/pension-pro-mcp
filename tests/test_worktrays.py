@@ -170,8 +170,10 @@ class TestComputePerformanceStats:
         assert alice["performance"]["avg_pickup_hours"] is None
         assert alice["performance"]["rejection_rate"] == 0.0
         assert alice["performance"]["task_type_breakdown"] == []
+        assert alice["performance"]["by_project"] == []
         assert result["aggregate"]["total_completed"] == 0
         assert result["aggregate"]["team_avg_completion_hours"] is None
+        assert result["aggregate"]["by_project"] == []
 
     def test_tasks_with_missing_task_active(self) -> None:
         members = [
@@ -184,12 +186,58 @@ class TestComputePerformanceStats:
                 "DateCompleted": "2026-03-02T00:00:00Z",
                 "AcknowledgeDate": None,
                 "Rejections": 0,
+                "TaskGroup": {"Name": "G1", "Project": {"Name": "DC Distribution Rqst", "Id": 50}},
             },
         ]
         result = _compute_performance_stats(completed_tasks, members)
         alice = result["members"][0]
         assert alice["performance"]["tasks_completed"] == 1
-        assert alice["performance"]["avg_completion_hours"] is None  # can't compute without TaskActive
+        assert alice["performance"]["avg_completion_hours"] is None
+        assert len(alice["performance"]["by_project"]) == 1
+        assert alice["performance"]["by_project"][0]["project"] == "DC Distribution Rqst"
+        assert alice["performance"]["by_project"][0]["avg_completion_hours"] is None
+
+
+    def test_aggregate_by_project(self) -> None:
+        members = [
+            {"contactID": 1, "RoleID": 10, "Contact": {"FirstName": "Alice", "LastName": "Smith"}},
+            {"contactID": 2, "RoleID": 20, "Contact": {"FirstName": "Bob", "LastName": "Jones"}},
+        ]
+        completed_tasks = [
+            {
+                "Id": 100, "TaskName": "Review", "AssignedToId": 1,
+                "TaskActive": "2026-03-01T00:00:00Z",
+                "DateCompleted": "2026-03-02T00:00:00Z",
+                "AcknowledgeDate": None, "Rejections": 0,
+                "TaskGroup": {"Name": "G1", "Project": {"Name": "DC Distribution Rqst", "Id": 50}},
+            },
+            {
+                "Id": 101, "TaskName": "Review", "AssignedToId": 2,
+                "TaskActive": "2026-03-05T00:00:00Z",
+                "DateCompleted": "2026-03-06T00:00:00Z",
+                "AcknowledgeDate": None, "Rejections": 0,
+                "TaskGroup": {"Name": "G2", "Project": {"Name": "DC Distribution Rqst", "Id": 51}},
+            },
+            {
+                "Id": 102, "TaskName": "Filing", "AssignedToId": 1,
+                "TaskActive": "2026-03-10T00:00:00Z",
+                "DateCompleted": "2026-03-10T06:00:00Z",
+                "AcknowledgeDate": None, "Rejections": 0,
+                "TaskGroup": {"Name": "G3", "Project": {"Name": "Loan Request", "Id": 52}},
+            },
+        ]
+        result = _compute_performance_stats(completed_tasks, members)
+        agg = result["aggregate"]
+        assert len(agg["by_project"]) == 2
+        dc = next(p for p in agg["by_project"] if p["project"] == "DC Distribution Rqst")
+        assert dc["tasks_completed"] == 2
+        assert dc["member_count"] == 2  # Alice and Bob both worked on DC
+        # Alice: 24h, Bob: 24h -> avg 24h
+        assert dc["avg_completion_hours"] == 24.0
+        loan = next(p for p in agg["by_project"] if p["project"] == "Loan Request")
+        assert loan["tasks_completed"] == 1
+        assert loan["member_count"] == 1
+        assert loan["avg_completion_hours"] == 6.0
 
 
 class TestComputeQueueHealth:
