@@ -6,6 +6,7 @@ import os
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from statistics import median
 from typing import Any
 
 from pension_pro_mcp.client import PensionProClient
@@ -167,13 +168,16 @@ def _compute_employee_throughput(
             "project": proj_name,
             "tasks_completed": len(proj_tasks),
             "avg_completion_hours": round(sum(proj_hours) / len(proj_hours), 1) if proj_hours else None,
+            "median_completion_hours": round(median(proj_hours), 1) if proj_hours else None,
         })
     by_project.sort(key=lambda x: x["tasks_completed"], reverse=True)
 
     return {
         "tasks_completed": len(completed_tasks),
         "avg_completion_hours": round(sum(completion_hours) / len(completion_hours), 1) if completion_hours else None,
+        "median_completion_hours": round(median(completion_hours), 1) if completion_hours else None,
         "avg_pickup_hours": round(sum(pickup_hours) / len(pickup_hours), 1) if pickup_hours else None,
+        "median_pickup_hours": round(median(pickup_hours), 1) if pickup_hours else None,
         "tasks_per_day": round(len(completed_tasks) / days_back, 2) if days_back > 0 else 0.0,
         "task_type_breakdown": [
             {"task_name": name, "count": count}

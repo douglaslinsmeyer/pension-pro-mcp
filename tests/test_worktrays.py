@@ -544,17 +544,21 @@ class TestComputeEmployeeThroughput:
         ]
         result = _compute_employee_throughput(completed_tasks, days_back=30)
         assert result["tasks_completed"] == 2
-        # Task 100: 24h, Task 101: 12h -> avg 18h
+        # Task 100: 24h, Task 101: 12h -> avg 18h, median 18h
         assert result["avg_completion_hours"] == 18.0
-        # Task 100: 2h, Task 101: 1h -> avg 1.5h
+        assert result["median_completion_hours"] == 18.0
+        # Task 100: 2h, Task 101: 1h -> avg 1.5h, median 1.5h
         assert result["avg_pickup_hours"] == 1.5
+        assert result["median_pickup_hours"] == 1.5
         assert result["tasks_per_day"] == round(2 / 30, 2)
 
     def test_empty_tasks(self) -> None:
         result = _compute_employee_throughput([], days_back=30)
         assert result["tasks_completed"] == 0
         assert result["avg_completion_hours"] is None
+        assert result["median_completion_hours"] is None
         assert result["avg_pickup_hours"] is None
+        assert result["median_pickup_hours"] is None
         assert result["tasks_per_day"] == 0.0
 
     def test_missing_task_active(self) -> None:
@@ -571,7 +575,9 @@ class TestComputeEmployeeThroughput:
         result = _compute_employee_throughput(completed_tasks, days_back=30)
         assert result["tasks_completed"] == 1
         assert result["avg_completion_hours"] is None
+        assert result["median_completion_hours"] is None
         assert result["avg_pickup_hours"] is None
+        assert result["median_pickup_hours"] is None
 
     def test_includes_task_type_and_project_breakdowns(self) -> None:
 
@@ -607,9 +613,11 @@ class TestComputeEmployeeThroughput:
         annual = next(p for p in result["by_project"] if p["project"] == "Annual Val")
         assert annual["tasks_completed"] == 2
         assert annual["avg_completion_hours"] == 24.0  # both 24h
+        assert annual["median_completion_hours"] == 24.0
         filing = next(p for p in result["by_project"] if p["project"] == "5500 Filing")
         assert filing["tasks_completed"] == 1
         assert filing["avg_completion_hours"] == 6.0
+        assert filing["median_completion_hours"] == 6.0
 
 
 class TestComputeEmployeeQuality:
