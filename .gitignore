@@ -9,3 +9,4 @@ build/
 .env
 .mcp.json
 docs/swagger.json
+.worktrees/
