@@ -16,6 +16,7 @@ from pension_pro_mcp.tools.worktrays import _resolve_employee
 from pension_pro_mcp.tools.worktrays import _compute_employee_workload
 from pension_pro_mcp.tools.worktrays import _compute_employee_throughput
 from pension_pro_mcp.tools.worktrays import _compute_employee_quality
+from pension_pro_mcp.tools.worktrays import _compact_employee_segment
 
 
 class TestGetWorktrays:
@@ -654,3 +655,46 @@ class TestComputeEmployeeQuality:
         assert result["total_rejections"] == 1
         assert result["bounce_back_count"] == 1
         assert result["bounce_back_rate"] == 0.5
+
+
+class TestCompactEmployeeSegment:
+    def test_strips_detail_fields(self) -> None:
+        segment = {
+            "worktray_id": 10,
+            "worktray_name": "Compliance",
+            "workload": {
+                "active_task_count": 3,
+                "oldest_task_age_days": 5,
+                "tasks": [{"task_name": "Review", "project": "Proj A", "age_days": 5}],
+            },
+            "throughput": {
+                "tasks_completed": 10,
+                "avg_completion_hours": 18.0,
+                "avg_pickup_hours": 2.0,
+                "tasks_per_day": 0.33,
+                "task_type_breakdown": [{"task_name": "Review", "count": 10}],
+                "by_project": [{"project": "Proj A", "tasks_completed": 10}],
+            },
+            "quality": {
+                "rejection_rate": 0.1,
+                "total_rejections": 1,
+                "bounce_back_count": 2,
+                "bounce_back_rate": 0.2,
+            },
+        }
+        result = _compact_employee_segment(segment)
+        # Workload: tasks list stripped
+        assert "tasks" not in result["workload"]
+        assert result["workload"]["active_task_count"] == 3
+        assert result["workload"]["oldest_task_age_days"] == 5
+        # Throughput: task_type_breakdown and by_project stripped
+        assert "task_type_breakdown" not in result["throughput"]
+        assert "by_project" not in result["throughput"]
+        assert result["throughput"]["tasks_completed"] == 10
+        assert result["throughput"]["avg_completion_hours"] == 18.0
+        # Quality: unchanged
+        assert result["quality"]["rejection_rate"] == 0.1
+        assert result["quality"]["bounce_back_count"] == 2
+        # Identity fields preserved
+        assert result["worktray_id"] == 10
+        assert result["worktray_name"] == "Compliance"

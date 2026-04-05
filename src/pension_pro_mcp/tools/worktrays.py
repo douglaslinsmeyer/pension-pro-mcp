@@ -496,6 +496,23 @@ def _compute_queue_health(
     }
 
 
+def _compact_employee_segment(segment: dict[str, Any]) -> dict[str, Any]:
+    """Strip detail fields from a worktray segment for the compact summary."""
+    return {
+        "worktray_id": segment["worktray_id"],
+        "worktray_name": segment.get("worktray_name"),
+        "workload": {
+            k: v for k, v in segment["workload"].items()
+            if k != "tasks"
+        },
+        "throughput": {
+            k: v for k, v in segment["throughput"].items()
+            if k not in ("task_type_breakdown", "by_project")
+        },
+        "quality": segment["quality"],
+    }
+
+
 def _compact_member(member: dict[str, Any]) -> dict[str, Any]:
     """Strip task detail lists from a member entry for the compact summary."""
     compact = {
