@@ -178,21 +178,27 @@ async def get_task_group_cycle_times(
     cutoff = now - timedelta(days=days_back)
     cutoff_iso = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    # Fetch completed projects within the window
+    # Fetch completed projects, then filter by date in Python
+    # (PensionPro's OData doesn't reliably support ge/le on date fields)
     filters: dict[str, str] = {
-        "CompletedOn__ge": cutoff_iso,
         "ProjectStatus.DisplayName": "Completed",
     }
     if template_id is not None:
         filters["ProjectTemplateId"] = str(template_id)
 
     endpoint = f"/plans/{plan_id}/projects" if plan_id else "/projects"
-    projects = await client.get_list(
+    all_projects = await client.get_list(
         endpoint,
         filters=filters,
         top=1000,
         max_total=10000,
     )
+
+    # Post-filter by completion date
+    projects = [
+        p for p in all_projects
+        if _parse_dt(p.get("CompletedOn")) and _parse_dt(p.get("CompletedOn")) >= cutoff
+    ]
 
     # Fetch task groups for each project, concurrency-limited
     sem = asyncio.Semaphore(10)
