@@ -15,6 +15,7 @@ from pension_pro_mcp.tools.worktrays import get_worktray_member_stats
 from pension_pro_mcp.tools.worktrays import _resolve_employee
 from pension_pro_mcp.tools.worktrays import _compute_employee_workload
 from pension_pro_mcp.tools.worktrays import _compute_employee_throughput
+from pension_pro_mcp.tools.worktrays import _compute_employee_quality
 
 
 class TestGetWorktrays:
@@ -571,6 +572,7 @@ class TestComputeEmployeeThroughput:
         assert result["avg_pickup_hours"] is None
 
     def test_includes_task_type_and_project_breakdowns(self) -> None:
+
         completed_tasks = [
             {
                 "Id": 100, "TaskName": "Review", "AssignedToId": 500,
@@ -606,3 +608,49 @@ class TestComputeEmployeeThroughput:
         filing = next(p for p in result["by_project"] if p["project"] == "5500 Filing")
         assert filing["tasks_completed"] == 1
         assert filing["avg_completion_hours"] == 6.0
+
+
+class TestComputeEmployeeQuality:
+    def test_computes_rejection_and_bounce_back_rates(self) -> None:
+        completed_tasks = [
+            {"Id": 100, "Rejections": 1, "Rejected": False},
+            {"Id": 101, "Rejections": 0, "Rejected": True},
+            {"Id": 102, "Rejections": 0, "Rejected": False},
+            {"Id": 103, "Rejections": 2, "Rejected": True},
+        ]
+        result = _compute_employee_quality(completed_tasks)
+        # 2 tasks with Rejections > 0 out of 4
+        assert result["rejection_rate"] == 0.5
+        assert result["total_rejections"] == 3
+        # 2 tasks with Rejected == True out of 4
+        assert result["bounce_back_count"] == 2
+        assert result["bounce_back_rate"] == 0.5
+
+    def test_empty_tasks(self) -> None:
+        result = _compute_employee_quality([])
+        assert result["rejection_rate"] == 0.0
+        assert result["total_rejections"] == 0
+        assert result["bounce_back_count"] == 0
+        assert result["bounce_back_rate"] == 0.0
+
+    def test_no_rejections_or_bounce_backs(self) -> None:
+        completed_tasks = [
+            {"Id": 100, "Rejections": 0, "Rejected": False},
+            {"Id": 101, "Rejections": 0, "Rejected": False},
+        ]
+        result = _compute_employee_quality(completed_tasks)
+        assert result["rejection_rate"] == 0.0
+        assert result["total_rejections"] == 0
+        assert result["bounce_back_count"] == 0
+        assert result["bounce_back_rate"] == 0.0
+
+    def test_handles_none_values(self) -> None:
+        completed_tasks = [
+            {"Id": 100, "Rejections": None, "Rejected": None},
+            {"Id": 101, "Rejections": 1, "Rejected": True},
+        ]
+        result = _compute_employee_quality(completed_tasks)
+        assert result["rejection_rate"] == 0.5
+        assert result["total_rejections"] == 1
+        assert result["bounce_back_count"] == 1
+        assert result["bounce_back_rate"] == 0.5

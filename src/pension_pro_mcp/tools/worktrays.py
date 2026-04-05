@@ -183,6 +183,31 @@ def _compute_employee_throughput(
     }
 
 
+def _compute_employee_quality(
+    completed_tasks: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Compute quality metrics (rejections and bounce-backs) from completed tasks."""
+    total = len(completed_tasks)
+    total_rejections = 0
+    tasks_with_rejections = 0
+    bounce_back_count = 0
+
+    for task in completed_tasks:
+        rejections = task.get("Rejections") or 0
+        total_rejections += rejections
+        if rejections > 0:
+            tasks_with_rejections += 1
+        if task.get("Rejected"):
+            bounce_back_count += 1
+
+    return {
+        "rejection_rate": round(tasks_with_rejections / total, 2) if total else 0.0,
+        "total_rejections": total_rejections,
+        "bounce_back_count": bounce_back_count,
+        "bounce_back_rate": round(bounce_back_count / total, 2) if total else 0.0,
+    }
+
+
 def _compute_workload_stats(
     active_tasks: list[dict[str, Any]],
     members: list[dict[str, Any]],
