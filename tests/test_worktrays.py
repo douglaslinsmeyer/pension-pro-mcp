@@ -12,6 +12,7 @@ from pension_pro_mcp.tools.worktrays import _compute_workload_stats
 from pension_pro_mcp.tools.worktrays import _compute_performance_stats
 from pension_pro_mcp.tools.worktrays import _compute_queue_health
 from pension_pro_mcp.tools.worktrays import get_worktray_member_stats
+from pension_pro_mcp.tools.worktrays import _resolve_employee
 
 
 class TestGetWorktrays:
@@ -380,3 +381,96 @@ class TestGetWorktrayMemberStats:
         assert result["aggregate"]["workload"]["total_active"] == 0
         assert result["aggregate"]["performance"]["total_completed"] == 0
         assert result["aggregate"]["queue_health"]["throughput_per_day"] == 0.0
+
+
+class TestResolveEmployee:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_single_match(self, client: PensionProClient) -> None:
+        respx.get("https://api.pensionpro.com/v2/contacts").mock(
+            return_value=httpx.Response(200, json=[
+                {
+                    "Id": 500, "FirstName": "Alice", "LastName": "Smith",
+                    "SystemEmployee": True,
+                    "Employee": {"Id": 50, "Active": True, "ContactId": 500},
+                },
+            ])
+        )
+        result = await _resolve_employee(client, "Smith")
+        assert result["status"] == "found"
+        assert result["contact_id"] == 500
+        assert result["name"] == "Alice Smith"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_no_matches(self, client: PensionProClient) -> None:
+        respx.get("https://api.pensionpro.com/v2/contacts").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        result = await _resolve_employee(client, "Nobody")
+        assert result["status"] == "not_found"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_multiple_matches(self, client: PensionProClient) -> None:
+        respx.get("https://api.pensionpro.com/v2/contacts").mock(
+            return_value=httpx.Response(200, json=[
+                {
+                    "Id": 500, "FirstName": "Alice", "LastName": "Smith",
+                    "SystemEmployee": True,
+                    "Employee": {"Id": 50, "Active": True, "ContactId": 500},
+                },
+                {
+                    "Id": 501, "FirstName": "Bob", "LastName": "Smithson",
+                    "SystemEmployee": True,
+                    "Employee": {"Id": 51, "Active": True, "ContactId": 501},
+                },
+            ])
+        )
+        result = await _resolve_employee(client, "Smith")
+        assert result["status"] == "ambiguous"
+        assert len(result["candidates"]) == 2
+        assert result["candidates"][0]["contact_id"] == 500
+        assert result["candidates"][0]["name"] == "Alice Smith"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_filters_inactive_employees(self, client: PensionProClient) -> None:
+        respx.get("https://api.pensionpro.com/v2/contacts").mock(
+            return_value=httpx.Response(200, json=[
+                {
+                    "Id": 500, "FirstName": "Alice", "LastName": "Smith",
+                    "SystemEmployee": True,
+                    "Employee": {"Id": 50, "Active": True, "ContactId": 500},
+                },
+                {
+                    "Id": 501, "FirstName": "Bob", "LastName": "Smith",
+                    "SystemEmployee": True,
+                    "Employee": {"Id": 51, "Active": False, "ContactId": 501},
+                },
+            ])
+        )
+        result = await _resolve_employee(client, "Smith")
+        assert result["status"] == "found"
+        assert result["contact_id"] == 500
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_filters_non_employees(self, client: PensionProClient) -> None:
+        respx.get("https://api.pensionpro.com/v2/contacts").mock(
+            return_value=httpx.Response(200, json=[
+                {
+                    "Id": 500, "FirstName": "Alice", "LastName": "Smith",
+                    "SystemEmployee": True,
+                    "Employee": {"Id": 50, "Active": True, "ContactId": 500},
+                },
+                {
+                    "Id": 502, "FirstName": "Carol", "LastName": "Smith",
+                    "SystemEmployee": False,
+                    "Employee": None,
+                },
+            ])
+        )
+        result = await _resolve_employee(client, "Smith")
+        assert result["status"] == "found"
+        assert result["contact_id"] == 500

@@ -54,6 +54,55 @@ def _task_project_name(task: dict[str, Any]) -> str | None:
     return None
 
 
+async def _resolve_employee(
+    client: PensionProClient,
+    name: str,
+) -> dict[str, Any]:
+    """Search for an employee by last name and resolve to a single contact.
+
+    Returns:
+        {"status": "found", "contact_id": int, "name": str} for a single match
+        {"status": "ambiguous", "candidates": [...]} for multiple matches
+        {"status": "not_found"} for no matches
+    """
+    contacts = await client.get_list(
+        "/contacts",
+        filters={"LastName__contains": name, "SystemEmployee": "true"},
+        expand=["Employee"],
+        top=50,
+        max_total=50,
+    )
+
+    # Filter to active employees
+    employees = []
+    for c in contacts:
+        emp = c.get("Employee")
+        if emp and isinstance(emp, dict) and emp.get("Active"):
+            employees.append(c)
+
+    if not employees:
+        return {"status": "not_found"}
+
+    if len(employees) == 1:
+        c = employees[0]
+        return {
+            "status": "found",
+            "contact_id": c["Id"],
+            "name": f"{c.get('FirstName', '')} {c.get('LastName', '')}".strip(),
+        }
+
+    return {
+        "status": "ambiguous",
+        "candidates": [
+            {
+                "contact_id": c["Id"],
+                "name": f"{c.get('FirstName', '')} {c.get('LastName', '')}".strip(),
+            }
+            for c in employees
+        ],
+    }
+
+
 def _compute_workload_stats(
     active_tasks: list[dict[str, Any]],
     members: list[dict[str, Any]],
