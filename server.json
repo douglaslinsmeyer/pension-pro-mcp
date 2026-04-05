@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.douglaslinsmeyer/pension-pro-mcp",
   "title": "PensionPro",
-  "description": "MCP server for the PensionPro API — plan lookup, project & task workflows, client search, to-do management, and notes for pension administration.",
+  "description": "MCP server for the PensionPro pension administration REST API.",
   "repository": {
     "url": "https://github.com/douglaslinsmeyer/pension-pro-mcp",
     "source": "github"
