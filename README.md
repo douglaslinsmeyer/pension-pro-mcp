@@ -127,3 +127,5 @@ python scripts/scrape_docs.py
 ## License
 
 MIT
+
+<!-- mcp-name: io.github.douglaslinsmeyer/pension-pro-mcp -->

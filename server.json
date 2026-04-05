@@ -1,0 +1,35 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.douglaslinsmeyer/pension-pro-mcp",
+  "title": "PensionPro",
+  "description": "MCP server for the PensionPro API — plan lookup, project & task workflows, client search, to-do management, and notes for pension administration.",
+  "repository": {
+    "url": "https://github.com/douglaslinsmeyer/pension-pro-mcp",
+    "source": "github"
+  },
+  "version": "0.2.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "pension-pro-mcp",
+      "version": "0.2.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "PENSION_PRO_API_KEY",
+          "description": "Your PensionPro API key",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "PENSION_PRO_USERNAME",
+          "description": "Your PensionPro username",
+          "isRequired": true,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}
