@@ -70,11 +70,30 @@ class TestComputeCycleTimes:
         assert annual["avg_cycle_days"] == 3.0
         assert annual["sla_adherence_pct"] == 100.0
 
-    def test_skips_groups_without_date_activated(self) -> None:
+    def test_falls_back_to_date_added_when_date_activated_is_none(self) -> None:
         task_groups = [
             {
                 "Id": 1,
                 "DateActivated": None,
+                "DateAdded": "2026-01-01T00:00:00Z",
+                "DateCompleted": "2026-01-09T00:00:00Z",
+                "DateDue": "2026-01-15T00:00:00Z",
+                "Project": {
+                    "ProjectTemplateId": 10,
+                    "ProjectTemplate": {"Name": "Template A"},
+                },
+            },
+        ]
+        result = _compute_cycle_times(task_groups)
+        assert len(result) == 1
+        assert result[0]["avg_cycle_days"] == 8.0
+
+    def test_skips_groups_without_any_start_date(self) -> None:
+        task_groups = [
+            {
+                "Id": 1,
+                "DateActivated": None,
+                "DateAdded": None,
                 "DateCompleted": "2026-01-09T00:00:00Z",
                 "DateDue": "2026-01-15T00:00:00Z",
                 "Project": {

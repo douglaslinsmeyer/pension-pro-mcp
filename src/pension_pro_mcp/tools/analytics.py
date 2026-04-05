@@ -29,12 +29,13 @@ def _parse_dt(value: str | None) -> datetime | None:
 def _compute_cycle_times(task_groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Group completed task groups by project template and compute cycle time stats.
 
+    Cycle time uses DateActivated (preferred) or DateAdded as the start date.
     Returns a list of per-template stat dicts, sorted by groups_completed descending.
     """
     # Group by template
     by_template: dict[int, dict[str, Any]] = {}
     for tg in task_groups:
-        activated = _parse_dt(tg.get("DateActivated"))
+        activated = _parse_dt(tg.get("DateActivated")) or _parse_dt(tg.get("DateAdded"))
         completed = _parse_dt(tg.get("DateCompleted"))
         if not activated or not completed:
             continue
@@ -210,7 +211,8 @@ async def get_task_group_cycle_times(
         for tg in task_groups:
             project = tg.get("Project") or {}
             tid = project.get("ProjectTemplateId")
-            if tid is not None and _parse_dt(tg.get("DateActivated")):
+            start = _parse_dt(tg.get("DateActivated")) or _parse_dt(tg.get("DateAdded"))
+            if tid is not None and start:
                 groups_by_template.setdefault(tid, []).append(tg["Id"])
 
         sem = asyncio.Semaphore(10)
