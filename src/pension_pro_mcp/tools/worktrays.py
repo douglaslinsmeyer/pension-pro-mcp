@@ -107,7 +107,7 @@ def _compute_performance_stats(
     completed_tasks: list[dict[str, Any]],
     members: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Compute per-member performance stats from completed tasks."""
+    """Compute per-member performance stats from completed tasks, grouped by project."""
     # Build member scaffolding
     member_map: dict[int, dict[str, Any]] = {}
     member_list: list[dict[str, Any]] = []
@@ -124,6 +124,7 @@ def _compute_performance_stats(
                 "avg_pickup_hours": None,
                 "rejection_rate": 0.0,
                 "task_type_breakdown": [],
+                "by_project": [],
             },
         }
         member_map[cid] = entry
@@ -137,6 +138,10 @@ def _compute_performance_stats(
             tasks_by_assignee[assignee].append(task)
 
     all_completion_hours: list[float] = []
+    # Aggregate by_project accumulators
+    agg_project_data: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {"completion_hours": [], "count": 0, "assignees": set()}
+    )
 
     for cid, entry in member_map.items():
         tasks = tasks_by_assignee.get(cid, [])
@@ -146,6 +151,9 @@ def _compute_performance_stats(
         pickup_hours: list[float] = []
         total_rejections = 0
         type_counts: Counter[str] = Counter()
+
+        # Group this member's tasks by project
+        project_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
 
         for task in tasks:
             active = _parse_dt(task.get("TaskActive"))
@@ -163,6 +171,17 @@ def _compute_performance_stats(
             total_rejections += task.get("Rejections") or 0
             type_counts[task.get("TaskName", "Unknown")] += 1
 
+            project_name = _task_project_name(task) or "Unknown"
+            project_groups[project_name].append(task)
+
+            # Feed aggregate
+            agg_project_data[project_name]["count"] += 1
+            agg_project_data[project_name]["assignees"].add(cid)
+            if active and completed:
+                hours_val = (completed - active).total_seconds() / 3600
+                agg_project_data[project_name]["completion_hours"].append(hours_val)
+
+        # Member totals
         if completion_hours:
             entry["performance"]["avg_completion_hours"] = round(
                 sum(completion_hours) / len(completion_hours), 1
@@ -178,15 +197,60 @@ def _compute_performance_stats(
             for name, count in type_counts.most_common()
         ]
 
+        # Per-project breakdown for this member
+        member_by_project: list[dict[str, Any]] = []
+        for proj_name, proj_tasks in project_groups.items():
+            proj_completion: list[float] = []
+            proj_pickup: list[float] = []
+            proj_rejections = 0
+            for task in proj_tasks:
+                active = _parse_dt(task.get("TaskActive"))
+                completed = _parse_dt(task.get("DateCompleted"))
+                ack = _parse_dt(task.get("AcknowledgeDate"))
+                if active and completed:
+                    proj_completion.append((completed - active).total_seconds() / 3600)
+                if active and ack:
+                    proj_pickup.append((ack - active).total_seconds() / 3600)
+                proj_rejections += task.get("Rejections") or 0
+
+            proj_entry: dict[str, Any] = {
+                "project": proj_name,
+                "tasks_completed": len(proj_tasks),
+                "avg_completion_hours": round(sum(proj_completion) / len(proj_completion), 1) if proj_completion else None,
+                "avg_pickup_hours": round(sum(proj_pickup) / len(proj_pickup), 1) if proj_pickup else None,
+                "rejection_rate": round(proj_rejections / len(proj_tasks), 2),
+            }
+            member_by_project.append(proj_entry)
+
+        entry["performance"]["by_project"] = sorted(
+            member_by_project, key=lambda x: x["tasks_completed"], reverse=True
+        )
+
     team_avg = None
     if all_completion_hours:
         team_avg = round(sum(all_completion_hours) / len(all_completion_hours), 1)
+
+    # Build aggregate by_project
+    agg_by_project = sorted(
+        [
+            {
+                "project": name,
+                "tasks_completed": info["count"],
+                "avg_completion_hours": round(sum(info["completion_hours"]) / len(info["completion_hours"]), 1) if info["completion_hours"] else None,
+                "member_count": len(info["assignees"]),
+            }
+            for name, info in agg_project_data.items()
+        ],
+        key=lambda x: x["tasks_completed"],
+        reverse=True,
+    )
 
     return {
         "members": member_list,
         "aggregate": {
             "total_completed": len(completed_tasks),
             "team_avg_completion_hours": team_avg,
+            "by_project": agg_by_project,
         },
     }
 

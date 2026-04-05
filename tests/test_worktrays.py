@@ -111,6 +111,7 @@ class TestComputePerformanceStats:
                 "DateCompleted": "2026-03-02T00:00:00Z",
                 "AcknowledgeDate": "2026-03-01T02:00:00Z",
                 "Rejections": 0,
+                "TaskGroup": {"Name": "G1", "Project": {"Name": "DC Distribution Rqst", "Id": 50}},
             },
             {
                 "Id": 101, "TaskName": "Review", "AssignedToId": 1,
@@ -118,6 +119,7 @@ class TestComputePerformanceStats:
                 "DateCompleted": "2026-03-05T12:00:00Z",
                 "AcknowledgeDate": "2026-03-05T01:00:00Z",
                 "Rejections": 1,
+                "TaskGroup": {"Name": "G2", "Project": {"Name": "Loan Request", "Id": 51}},
             },
             {
                 "Id": 102, "TaskName": "Filing", "AssignedToId": 2,
@@ -125,6 +127,7 @@ class TestComputePerformanceStats:
                 "DateCompleted": "2026-03-12T00:00:00Z",
                 "AcknowledgeDate": None,
                 "Rejections": 0,
+                "TaskGroup": {"Name": "G1", "Project": {"Name": "DC Distribution Rqst", "Id": 50}},
             },
         ]
         result = _compute_performance_stats(completed_tasks, members)
@@ -138,9 +141,21 @@ class TestComputePerformanceStats:
         assert alice["performance"]["rejection_rate"] == 0.5
         assert alice["performance"]["task_type_breakdown"] == [{"task_name": "Review", "count": 2}]
 
+        # by_project breakdown
+        assert len(alice["performance"]["by_project"]) == 2
+        dc = next(p for p in alice["performance"]["by_project"] if p["project"] == "DC Distribution Rqst")
+        assert dc["tasks_completed"] == 1
+        assert dc["avg_completion_hours"] == 24.0
+        loan = next(p for p in alice["performance"]["by_project"] if p["project"] == "Loan Request")
+        assert loan["tasks_completed"] == 1
+        assert loan["avg_completion_hours"] == 12.0
+        assert loan["rejection_rate"] == 1.0  # 1 rejection / 1 task
+
         bob = next(m for m in result["members"] if m["contact_id"] == 2)
         assert bob["performance"]["tasks_completed"] == 1
         assert bob["performance"]["avg_pickup_hours"] is None  # no acknowledge dates
+        assert len(bob["performance"]["by_project"]) == 1
+        assert bob["performance"]["by_project"][0]["project"] == "DC Distribution Rqst"
 
         assert result["aggregate"]["total_completed"] == 3
 
