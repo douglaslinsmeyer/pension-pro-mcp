@@ -16,10 +16,13 @@ keywords = ["mcp", "pensionpro", "pension", "ai", "model-context-protocol"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Software Development :: Libraries",
 ]
 dependencies = [
     "mcp>=1.0.0",
@@ -30,6 +33,7 @@ dependencies = [
 Homepage = "https://github.com/douglaslinsmeyer/pension-pro-mcp"
 Repository = "https://github.com/douglaslinsmeyer/pension-pro-mcp"
 Issues = "https://github.com/douglaslinsmeyer/pension-pro-mcp/issues"
+Changelog = "https://github.com/douglaslinsmeyer/pension-pro-mcp/releases"
 
 [project.scripts]
 pension-pro-mcp = "pension_pro_mcp.server:main"
