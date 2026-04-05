@@ -9,10 +9,17 @@ from pension_pro_mcp.client import PensionProClient
 
 
 def _parse_dt(value: str | None) -> datetime | None:
-    """Parse an ISO 8601 datetime string from the API."""
+    """Parse a datetime string from the API (ISO 8601 or US format)."""
     if not value:
         return None
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        # Handle US format: "MM/DD/YYYY hh:mm:ss AM/PM"
+        try:
+            return datetime.strptime(value, "%m/%d/%Y %I:%M:%S %p").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
 
 
 def _task_age_days(task: dict[str, Any], now: datetime) -> int:
