@@ -23,7 +23,10 @@ from pension_pro_mcp.tools.projects import (
 from pension_pro_mcp.tools.clients import search_clients, get_client_details, search_contacts
 from pension_pro_mcp.tools.todos import search_todos, get_todo, create_todo, update_todo
 from pension_pro_mcp.tools.notes import add_note, get_notes
-from pension_pro_mcp.tools.worktrays import get_worktrays, get_worktray, get_worktray_member_stats, read_cached_stats
+from pension_pro_mcp.tools.worktrays import (
+    get_worktrays, get_worktray, get_worktray_member_stats, read_cached_stats,
+    get_employee_stats, read_cached_employee_stats,
+)
 from pension_pro_mcp.tools.swagger import (
     SWAGGER_URL, search_paths, get_endpoint, search_schemas, get_schema,
 )
@@ -476,6 +479,37 @@ def _worktray_stats_resource(worktray_id: int) -> str:
     result = read_cached_stats(worktray_id)
     if result is None:
         return json.dumps({"error": f"No cached stats for worktray {worktray_id}. Run get_worktray_member_stats first."})
+    return json.dumps(result)
+
+
+@mcp.tool(name="get_employee_stats")
+@pipeline.wrap
+async def _get_employee_stats(
+    ctx: Context[ServerSession, AppContext],
+    name: str,
+    days_back: int = 30,
+) -> dict:
+    """Get individual employee performance analysis across all worktrays.
+
+    Searches by last name, then computes per-worktray metrics for workload,
+    throughput, and quality (rejections and bounce-backs). Returns a compact
+    summary; full results cached and available via the employee-stats resource.
+
+    If the name matches multiple employees, returns a candidate list to disambiguate.
+    """
+    client = ctx.request_context.lifespan_context.client
+    return await get_employee_stats(client, name=name, days_back=days_back)
+
+
+@mcp.resource("employee-stats://{contact_id}", name="employee_stats",
+              description="Full employee stats from the most recent analysis. "
+              "Run get_employee_stats first to populate the cache.",
+              mime_type="application/json")
+def _employee_stats_resource(contact_id: int) -> str:
+    """Return cached full stats for an employee."""
+    result = read_cached_employee_stats(contact_id)
+    if result is None:
+        return json.dumps({"error": f"No cached stats for employee {contact_id}. Run get_employee_stats first."})
     return json.dumps(result)
 
 
