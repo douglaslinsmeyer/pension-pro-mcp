@@ -14,6 +14,7 @@ from pension_pro_mcp.tools.worktrays import _compute_queue_health
 from pension_pro_mcp.tools.worktrays import get_worktray_member_stats
 from pension_pro_mcp.tools.worktrays import _resolve_employee
 from pension_pro_mcp.tools.worktrays import _compute_employee_workload
+from pension_pro_mcp.tools.worktrays import _compute_employee_throughput
 
 
 class TestGetWorktrays:
@@ -516,3 +517,92 @@ class TestComputeEmployeeWorkload:
         assert result["tasks"][0]["task_name"] == "Review"
         assert result["tasks"][0]["project"] == "Annual Val"
         assert result["tasks"][0]["age_days"] == 2
+
+
+class TestComputeEmployeeThroughput:
+    def test_computes_throughput_metrics(self) -> None:
+        completed_tasks = [
+            {
+                "Id": 100, "TaskName": "Review", "AssignedToId": 500,
+                "TaskActive": "2026-03-01T00:00:00Z",
+                "DateCompleted": "2026-03-02T00:00:00Z",
+                "AcknowledgeDate": "2026-03-01T02:00:00Z",
+                "Rejections": 0, "Rejected": False,
+                "TaskGroup": {"Name": "G1", "Project": {"Name": "Annual Val", "Id": 50}},
+            },
+            {
+                "Id": 101, "TaskName": "Filing", "AssignedToId": 500,
+                "TaskActive": "2026-03-05T00:00:00Z",
+                "DateCompleted": "2026-03-05T12:00:00Z",
+                "AcknowledgeDate": "2026-03-05T01:00:00Z",
+                "Rejections": 0, "Rejected": False,
+                "TaskGroup": {"Name": "G2", "Project": {"Name": "5500 Filing", "Id": 51}},
+            },
+        ]
+        result = _compute_employee_throughput(completed_tasks, days_back=30)
+        assert result["tasks_completed"] == 2
+        # Task 100: 24h, Task 101: 12h -> avg 18h
+        assert result["avg_completion_hours"] == 18.0
+        # Task 100: 2h, Task 101: 1h -> avg 1.5h
+        assert result["avg_pickup_hours"] == 1.5
+        assert result["tasks_per_day"] == round(2 / 30, 2)
+
+    def test_empty_tasks(self) -> None:
+        result = _compute_employee_throughput([], days_back=30)
+        assert result["tasks_completed"] == 0
+        assert result["avg_completion_hours"] is None
+        assert result["avg_pickup_hours"] is None
+        assert result["tasks_per_day"] == 0.0
+
+    def test_missing_task_active(self) -> None:
+        completed_tasks = [
+            {
+                "Id": 100, "TaskName": "Review", "AssignedToId": 500,
+                "TaskActive": None,
+                "DateCompleted": "2026-03-02T00:00:00Z",
+                "AcknowledgeDate": None,
+                "Rejections": 0, "Rejected": False,
+                "TaskGroup": {"Name": "G1", "Project": {"Name": "Annual Val", "Id": 50}},
+            },
+        ]
+        result = _compute_employee_throughput(completed_tasks, days_back=30)
+        assert result["tasks_completed"] == 1
+        assert result["avg_completion_hours"] is None
+        assert result["avg_pickup_hours"] is None
+
+    def test_includes_task_type_and_project_breakdowns(self) -> None:
+        completed_tasks = [
+            {
+                "Id": 100, "TaskName": "Review", "AssignedToId": 500,
+                "TaskActive": "2026-03-01T00:00:00Z",
+                "DateCompleted": "2026-03-02T00:00:00Z",
+                "AcknowledgeDate": None, "Rejections": 0, "Rejected": False,
+                "TaskGroup": {"Name": "G1", "Project": {"Name": "Annual Val", "Id": 50}},
+            },
+            {
+                "Id": 101, "TaskName": "Review", "AssignedToId": 500,
+                "TaskActive": "2026-03-05T00:00:00Z",
+                "DateCompleted": "2026-03-06T00:00:00Z",
+                "AcknowledgeDate": None, "Rejections": 0, "Rejected": False,
+                "TaskGroup": {"Name": "G2", "Project": {"Name": "Annual Val", "Id": 50}},
+            },
+            {
+                "Id": 102, "TaskName": "Filing", "AssignedToId": 500,
+                "TaskActive": "2026-03-10T00:00:00Z",
+                "DateCompleted": "2026-03-10T06:00:00Z",
+                "AcknowledgeDate": None, "Rejections": 0, "Rejected": False,
+                "TaskGroup": {"Name": "G3", "Project": {"Name": "5500 Filing", "Id": 51}},
+            },
+        ]
+        result = _compute_employee_throughput(completed_tasks, days_back=30)
+        assert result["task_type_breakdown"] == [
+            {"task_name": "Review", "count": 2},
+            {"task_name": "Filing", "count": 1},
+        ]
+        assert len(result["by_project"]) == 2
+        annual = next(p for p in result["by_project"] if p["project"] == "Annual Val")
+        assert annual["tasks_completed"] == 2
+        assert annual["avg_completion_hours"] == 24.0  # both 24h
+        filing = next(p for p in result["by_project"] if p["project"] == "5500 Filing")
+        assert filing["tasks_completed"] == 1
+        assert filing["avg_completion_hours"] == 6.0

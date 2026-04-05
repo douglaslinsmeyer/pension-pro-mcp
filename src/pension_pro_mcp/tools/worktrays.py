@@ -130,6 +130,59 @@ def _compute_employee_workload(
     }
 
 
+def _compute_employee_throughput(
+    completed_tasks: list[dict[str, Any]],
+    days_back: int,
+) -> dict[str, Any]:
+    """Compute throughput metrics for an employee from their completed tasks."""
+    completion_hours: list[float] = []
+    pickup_hours: list[float] = []
+    type_counts: Counter[str] = Counter()
+    project_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
+    for task in completed_tasks:
+        active = _parse_dt(task.get("TaskActive"))
+        completed = _parse_dt(task.get("DateCompleted"))
+        ack = _parse_dt(task.get("AcknowledgeDate"))
+
+        if active and completed:
+            completion_hours.append((completed - active).total_seconds() / 3600)
+        if active and ack:
+            pickup_hours.append((ack - active).total_seconds() / 3600)
+
+        type_counts[task.get("TaskName", "Unknown")] += 1
+        project_name = _task_project_name(task) or "Unknown"
+        project_groups[project_name].append(task)
+
+    # Per-project breakdown
+    by_project: list[dict[str, Any]] = []
+    for proj_name, proj_tasks in project_groups.items():
+        proj_hours: list[float] = []
+        for t in proj_tasks:
+            a = _parse_dt(t.get("TaskActive"))
+            c = _parse_dt(t.get("DateCompleted"))
+            if a and c:
+                proj_hours.append((c - a).total_seconds() / 3600)
+        by_project.append({
+            "project": proj_name,
+            "tasks_completed": len(proj_tasks),
+            "avg_completion_hours": round(sum(proj_hours) / len(proj_hours), 1) if proj_hours else None,
+        })
+    by_project.sort(key=lambda x: x["tasks_completed"], reverse=True)
+
+    return {
+        "tasks_completed": len(completed_tasks),
+        "avg_completion_hours": round(sum(completion_hours) / len(completion_hours), 1) if completion_hours else None,
+        "avg_pickup_hours": round(sum(pickup_hours) / len(pickup_hours), 1) if pickup_hours else None,
+        "tasks_per_day": round(len(completed_tasks) / days_back, 2) if days_back > 0 else 0.0,
+        "task_type_breakdown": [
+            {"task_name": name, "count": count}
+            for name, count in type_counts.most_common()
+        ],
+        "by_project": by_project,
+    }
+
+
 def _compute_workload_stats(
     active_tasks: list[dict[str, Any]],
     members: list[dict[str, Any]],
