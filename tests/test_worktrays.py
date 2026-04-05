@@ -315,7 +315,6 @@ class TestGetWorktrayMemberStats:
                 {"Id": 3, "contactID": 600, "WorktrayID": 999, "RoleID": 1, "Contact": {"FirstName": "Other", "LastName": "Person"}},
             ])
         )
-        # Active tasks route — matches filter with DateCompleted eq null
         respx.get("https://api.pensionpro.com/v2/tasks").mock(
             side_effect=lambda request: httpx.Response(200, json=[
                 {
@@ -347,12 +346,20 @@ class TestGetWorktrayMemberStats:
         assert alice["workload"]["active_task_count"] == 1
         assert alice["performance"]["tasks_completed"] == 1
         assert "task_type_breakdown" not in alice["performance"]  # stripped in compact
+        assert "by_project" not in alice["performance"]  # stripped in compact
         assert "tasks" not in alice["workload"]  # stripped in compact
         assert result["aggregate"]["workload"]["total_active"] == 1
         assert result["aggregate"]["performance"]["total_completed"] == 1
         assert "throughput_per_day" in result["aggregate"]["queue_health"]
         assert "overdue_tasks" not in result["aggregate"]["queue_health"]  # stripped in compact
         assert "overdue_by_type" in result["aggregate"]["queue_health"]
+        # Verify aggregate by_project with top_performers
+        agg_projects = result["aggregate"]["performance"]["by_project"]
+        assert len(agg_projects) == 1
+        assert agg_projects[0]["project"] == "Annual Val"
+        assert agg_projects[0]["tasks_completed"] == 1
+        assert "top_performers" in agg_projects[0]
+        assert agg_projects[0]["top_performers"][0]["name"] == "Alice Smith"
         assert "full_results" in result
         assert "resource_uri" in result
 

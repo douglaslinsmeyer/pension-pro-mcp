@@ -351,7 +351,7 @@ def _compact_member(member: dict[str, Any]) -> dict[str, Any]:
         "workload": {"active_task_count": member["workload"]["active_task_count"]},
         "performance": {
             k: v for k, v in member["performance"].items()
-            if k != "task_type_breakdown"
+            if k not in ("task_type_breakdown", "by_project")
         },
     }
     return compact
@@ -409,6 +409,24 @@ async def get_worktray_member_stats(
     for m in workload["members"]:
         m["performance"] = perf_by_id.get(m["contact_id"], {})
         merged_members.append(m)
+
+    # Enrich aggregate by_project with top_performers from per-member data
+    agg_by_project = performance["aggregate"].get("by_project", [])
+    for proj_entry in agg_by_project:
+        proj_name = proj_entry["project"]
+        performers: list[dict[str, Any]] = []
+        for m in merged_members:
+            for mp in m.get("performance", {}).get("by_project", []):
+                if mp["project"] == proj_name:
+                    performers.append({
+                        "name": m["name"],
+                        "tasks_completed": mp["tasks_completed"],
+                        "avg_completion_hours": mp["avg_completion_hours"],
+                    })
+                    break
+        proj_entry["top_performers"] = sorted(
+            performers, key=lambda x: x["tasks_completed"], reverse=True
+        )[:3]
 
     # Build full result
     full_result: dict[str, Any] = {
