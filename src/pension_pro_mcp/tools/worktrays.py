@@ -103,6 +103,33 @@ async def _resolve_employee(
     }
 
 
+def _compute_employee_workload(
+    active_tasks: list[dict[str, Any]],
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Compute workload metrics for an employee from their active tasks."""
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    oldest_age = 0
+    tasks: list[dict[str, Any]] = []
+    for task in active_tasks:
+        age = _task_age_days(task, now)
+        if age > oldest_age:
+            oldest_age = age
+        tasks.append({
+            "task_name": task.get("TaskName", "Unknown"),
+            "project": _task_project_name(task),
+            "age_days": age,
+        })
+
+    return {
+        "active_task_count": len(active_tasks),
+        "oldest_task_age_days": oldest_age,
+        "tasks": tasks,
+    }
+
+
 def _compute_workload_stats(
     active_tasks: list[dict[str, Any]],
     members: list[dict[str, Any]],

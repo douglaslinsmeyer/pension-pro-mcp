@@ -13,6 +13,7 @@ from pension_pro_mcp.tools.worktrays import _compute_performance_stats
 from pension_pro_mcp.tools.worktrays import _compute_queue_health
 from pension_pro_mcp.tools.worktrays import get_worktray_member_stats
 from pension_pro_mcp.tools.worktrays import _resolve_employee
+from pension_pro_mcp.tools.worktrays import _compute_employee_workload
 
 
 class TestGetWorktrays:
@@ -474,3 +475,44 @@ class TestResolveEmployee:
         result = await _resolve_employee(client, "Smith")
         assert result["status"] == "found"
         assert result["contact_id"] == 500
+
+
+class TestComputeEmployeeWorkload:
+    def test_counts_active_tasks(self) -> None:
+        now = datetime(2026, 4, 4, tzinfo=timezone.utc)
+        active_tasks = [
+            {
+                "Id": 100, "TaskName": "Review",
+                "TaskActive": "2026-03-30T00:00:00Z", "DateAdded": "2026-03-28T00:00:00Z",
+                "TaskGroup": {"Name": "G1", "Project": {"Name": "Annual Val", "Id": 50}},
+            },
+            {
+                "Id": 101, "TaskName": "Filing",
+                "TaskActive": "2026-04-01T00:00:00Z", "DateAdded": "2026-03-29T00:00:00Z",
+                "TaskGroup": {"Name": "G2", "Project": {"Name": "5500 Filing", "Id": 51}},
+            },
+        ]
+        result = _compute_employee_workload(active_tasks, now=now)
+        assert result["active_task_count"] == 2
+        assert result["oldest_task_age_days"] == 5  # Mar 30 -> Apr 4
+
+    def test_empty_tasks(self) -> None:
+        now = datetime(2026, 4, 4, tzinfo=timezone.utc)
+        result = _compute_employee_workload([], now=now)
+        assert result["active_task_count"] == 0
+        assert result["oldest_task_age_days"] == 0
+
+    def test_includes_task_details(self) -> None:
+        now = datetime(2026, 4, 4, tzinfo=timezone.utc)
+        active_tasks = [
+            {
+                "Id": 100, "TaskName": "Review",
+                "TaskActive": "2026-04-02T00:00:00Z", "DateAdded": "2026-04-01T00:00:00Z",
+                "TaskGroup": {"Name": "G1", "Project": {"Name": "Annual Val", "Id": 50}},
+            },
+        ]
+        result = _compute_employee_workload(active_tasks, now=now)
+        assert len(result["tasks"]) == 1
+        assert result["tasks"][0]["task_name"] == "Review"
+        assert result["tasks"][0]["project"] == "Annual Val"
+        assert result["tasks"][0]["age_days"] == 2
