@@ -10,6 +10,7 @@ from pension_pro_mcp.client import PensionProClient
 from pension_pro_mcp.tools.worktrays import get_worktrays, get_worktray
 from pension_pro_mcp.tools.worktrays import _compute_workload_stats
 from pension_pro_mcp.tools.worktrays import _compute_performance_stats
+from pension_pro_mcp.tools.worktrays import _compute_queue_health
 
 
 class TestGetWorktrays:
@@ -189,3 +190,62 @@ class TestComputePerformanceStats:
         alice = result["members"][0]
         assert alice["performance"]["tasks_completed"] == 1
         assert alice["performance"]["avg_completion_hours"] is None  # can't compute without TaskActive
+
+
+class TestComputeQueueHealth:
+    def test_computes_throughput_and_intake(self) -> None:
+        now = datetime(2026, 4, 4, tzinfo=timezone.utc)
+        completed_tasks = [
+            {"Id": 1, "DateAdded": "2026-03-10T00:00:00Z", "DateCompleted": "2026-03-15T00:00:00Z"},
+            {"Id": 2, "DateAdded": "2026-03-20T00:00:00Z", "DateCompleted": "2026-03-25T00:00:00Z"},
+        ]
+        active_tasks = [
+            {
+                "Id": 3, "DateAdded": "2026-03-28T00:00:00Z",
+                "TaskActive": "2026-03-30T00:00:00Z", "DaysToComp": 3,
+            },
+            {
+                "Id": 4, "DateAdded": "2026-02-01T00:00:00Z",  # added before window
+                "TaskActive": "2026-02-05T00:00:00Z", "DaysToComp": 5,
+            },
+        ]
+        result = _compute_queue_health(active_tasks, completed_tasks, days_back=30, now=now)
+        assert result["throughput_per_day"] == round(2 / 30, 2)
+        # 3 tasks added within window (ids 1, 2, 3); id 4 added before window
+        assert result["intake_per_day"] == round(3 / 30, 2)
+        assert result["queue_growing"] is True
+
+    def test_detects_overdue_tasks(self) -> None:
+        now = datetime(2026, 4, 4, tzinfo=timezone.utc)
+        active_tasks = [
+            {
+                "Id": 10, "TaskName": "Slow Task", "DaysToComp": 3,
+                "TaskActive": "2026-03-20T00:00:00Z", "DateAdded": "2026-03-18T00:00:00Z",
+                "TaskGroup": {"Name": "G", "Project": {"Name": "Proj A", "Id": 1}},
+            },
+            {
+                "Id": 11, "TaskName": "OK Task", "DaysToComp": 30,
+                "TaskActive": "2026-04-01T00:00:00Z", "DateAdded": "2026-04-01T00:00:00Z",
+                "TaskGroup": {"Name": "G", "Project": {"Name": "Proj B", "Id": 2}},
+            },
+            {
+                "Id": 12, "TaskName": "No SLA", "DaysToComp": None,
+                "TaskActive": "2026-03-01T00:00:00Z", "DateAdded": "2026-03-01T00:00:00Z",
+                "TaskGroup": None,
+            },
+        ]
+        result = _compute_queue_health(active_tasks, [], days_back=30, now=now)
+        assert result["overdue_count"] == 1
+        assert result["overdue_tasks"][0]["task_id"] == 10
+        assert result["overdue_tasks"][0]["project"] == "Proj A"
+        assert result["oldest_active_task_age_days"] == 34  # from task 12: Mar 1 -> Apr 4
+
+    def test_empty_worktray(self) -> None:
+        now = datetime(2026, 4, 4, tzinfo=timezone.utc)
+        result = _compute_queue_health([], [], days_back=30, now=now)
+        assert result["throughput_per_day"] == 0.0
+        assert result["intake_per_day"] == 0.0
+        assert result["queue_growing"] is False
+        assert result["oldest_active_task_age_days"] == 0
+        assert result["overdue_count"] == 0
+        assert result["overdue_tasks"] == []

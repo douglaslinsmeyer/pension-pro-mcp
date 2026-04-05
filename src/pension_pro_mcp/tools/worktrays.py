@@ -1,7 +1,7 @@
 """Worktray tools."""
 
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from pension_pro_mcp.client import PensionProClient
@@ -168,6 +168,71 @@ def _compute_performance_stats(
             "total_completed": len(completed_tasks),
             "team_avg_completion_hours": team_avg,
         },
+    }
+
+
+def _compute_queue_health(
+    active_tasks: list[dict[str, Any]],
+    completed_tasks: list[dict[str, Any]],
+    days_back: int,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Compute queue health metrics from active and completed tasks."""
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    cutoff = now - timedelta(days=days_back)
+
+    # Throughput
+    throughput_per_day = round(len(completed_tasks) / days_back, 2) if days_back > 0 else 0.0
+
+    # Intake: union of active + completed, deduplicated, added within window
+    seen_ids: set[int] = set()
+    all_tasks: list[dict[str, Any]] = []
+    for task in completed_tasks + active_tasks:
+        tid = task.get("Id")
+        if tid not in seen_ids:
+            seen_ids.add(tid)
+            all_tasks.append(task)
+
+    intake_count = 0
+    for task in all_tasks:
+        added = _parse_dt(task.get("DateAdded"))
+        if added and added >= cutoff:
+            intake_count += 1
+
+    intake_per_day = round(intake_count / days_back, 2) if days_back > 0 else 0.0
+
+    # Oldest active task
+    oldest_age = 0
+    for task in active_tasks:
+        age = _task_age_days(task, now)
+        if age > oldest_age:
+            oldest_age = age
+
+    # Overdue tasks
+    overdue_tasks: list[dict[str, Any]] = []
+    for task in active_tasks:
+        days_to_comp = task.get("DaysToComp")
+        if days_to_comp is None:
+            continue
+        age = _task_age_days(task, now)
+        if age > days_to_comp:
+            overdue_tasks.append({
+                "task_id": task["Id"],
+                "task_name": task.get("TaskName", "Unknown"),
+                "project": _task_project_name(task),
+                "age_days": age,
+                "days_to_comp": days_to_comp,
+            })
+
+    return {
+        "throughput_per_day": throughput_per_day,
+        "intake_per_day": intake_per_day,
+        "queue_growing": intake_per_day > throughput_per_day,
+        "oldest_active_task_age_days": oldest_age,
+        "overdue_count": len(overdue_tasks),
+        "overdue_tasks": overdue_tasks,
     }
 
 
