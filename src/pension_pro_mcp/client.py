@@ -89,10 +89,10 @@ class PensionProClient:
                     clauses.append(f"contains({field}, '{escaped}')")
                 elif key.endswith("__ge"):
                     field = key[: -len("__ge")]
-                    clauses.append(f"{field} ge '{escaped}'")
+                    clauses.append(f"{field} ge {escaped}")
                 elif key.endswith("__le"):
                     field = key[: -len("__le")]
-                    clauses.append(f"{field} le '{escaped}'")
+                    clauses.append(f"{field} le {escaped}")
                 elif value in ("true", "false", "null"):
                     clauses.append(f"{key} eq {value}")
                 elif value.isdigit():
