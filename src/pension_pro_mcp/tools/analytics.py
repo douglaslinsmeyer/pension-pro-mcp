@@ -1,9 +1,12 @@
 """Analytics tools for cross-cutting workflow metrics."""
 
 import asyncio
+import logging
 import statistics
 from datetime import datetime, timedelta, timezone
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from pension_pro_mcp.client import PensionProClient
 
@@ -197,6 +200,11 @@ async def get_task_group_cycle_times(
 
     # Fetch per-step data if requested
     if include_steps and task_groups:
+        if len(task_groups) > 500:
+            logger.warning(
+                "include_steps=True with %d task groups — this may be slow",
+                len(task_groups),
+            )
         # Group task_group IDs by template
         groups_by_template: dict[int, list[int]] = {}
         for tg in task_groups:

@@ -1,7 +1,5 @@
 """Tests for analytics tools."""
 
-from datetime import datetime, timezone
-
 import httpx
 import pytest
 import respx
