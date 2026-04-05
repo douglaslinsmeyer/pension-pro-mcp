@@ -758,6 +758,14 @@ class TestGetEmployeeStats:
             ])
         )
 
+        # Mock worktray detail fetches
+        respx.get("https://api.pensionpro.com/v2/worktrays/100").mock(
+            return_value=httpx.Response(200, json={"Id": 100, "Name": "Compliance Review"})
+        )
+        respx.get("https://api.pensionpro.com/v2/worktrays/200").mock(
+            return_value=httpx.Response(200, json={"Id": 200, "Name": "Filing Queue"})
+        )
+
         # Mock tasks — use side_effect to distinguish completed vs active
         respx.get("https://api.pensionpro.com/v2/tasks").mock(
             side_effect=lambda request: httpx.Response(200, json=[
@@ -795,6 +803,7 @@ class TestGetEmployeeStats:
 
         # Find worktray 100 segment (has 1 completed, 1 active)
         wt100 = next(s for s in result["worktray_segments"] if s["worktray_id"] == 100)
+        assert wt100["worktray_name"] == "Compliance Review"
         assert wt100["workload"]["active_task_count"] == 1
         assert wt100["throughput"]["tasks_completed"] == 1
         # Compact: no task_type_breakdown or by_project
@@ -804,6 +813,7 @@ class TestGetEmployeeStats:
 
         # Find worktray 200 segment (has 1 completed with bounce-back, 0 active)
         wt200 = next(s for s in result["worktray_segments"] if s["worktray_id"] == 200)
+        assert wt200["worktray_name"] == "Filing Queue"
         assert wt200["throughput"]["tasks_completed"] == 1
         assert wt200["quality"]["bounce_back_count"] == 1
         assert wt200["quality"]["total_rejections"] == 1

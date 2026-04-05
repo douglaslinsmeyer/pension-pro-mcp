@@ -573,12 +573,15 @@ async def get_employee_stats(
     # Collect all worktray IDs the employee has activity in
     all_wt_ids = worktray_ids | set(completed_by_wt.keys()) | set(active_by_wt.keys())
 
-    # Build worktray name lookup from memberships
+    # Fetch worktray names in parallel
     wt_names: dict[int, str | None] = {}
-    for m in memberships:
-        wt_id = m.get("WorktrayID")
-        if wt_id:
-            wt_names[wt_id] = None  # name not available from membership endpoint
+    if all_wt_ids:
+        wt_objects = await asyncio.gather(
+            *(client.get(f"/worktrays/{wt_id}") for wt_id in all_wt_ids)
+        )
+        for wt in wt_objects:
+            if isinstance(wt, dict) and wt.get("Id"):
+                wt_names[wt["Id"]] = wt.get("Name")
 
     # Step 4: Compute per-worktray segments
     segments: list[dict[str, Any]] = []
