@@ -190,15 +190,18 @@ async def get_task_group_cycle_times(
     all_projects = await client.get_list(
         endpoint,
         filters=filters,
+        orderby="CompletedOn desc",
         top=1000,
         max_total=10000,
     )
 
-    # Post-filter by completion date
-    projects = [
-        p for p in all_projects
-        if _parse_dt(p.get("CompletedOn")) and _parse_dt(p.get("CompletedOn")) >= cutoff
-    ]
+    # Post-filter by completion date — orderby ensures most recent come first,
+    # so we stop paginating once we pass the cutoff window.
+    projects: list[dict[str, Any]] = []
+    for p in all_projects:
+        completed = _parse_dt(p.get("CompletedOn"))
+        if completed and completed >= cutoff:
+            projects.append(p)
 
     # Fetch task groups for each project, concurrency-limited
     sem = asyncio.Semaphore(10)
