@@ -85,3 +85,75 @@ def _compute_cycle_times(task_groups: list[dict[str, Any]]) -> list[dict[str, An
         })
 
     return sorted(results, key=lambda x: x["groups_completed"], reverse=True)
+
+
+def _compute_step_durations(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Compute per-step duration for tasks within a single task group.
+
+    Tasks are sorted by Order. Steps with a None Order, missing DateActivated or
+    DateCompleted, or a negative duration (data quality issue) are skipped.
+    Returns a list of step dicts with order, task_name, duration_days.
+    """
+    sorted_tasks = sorted(
+        (t for t in tasks if t.get("Order") is not None),
+        key=lambda t: t["Order"],
+    )
+    steps: list[dict[str, Any]] = []
+    for task in sorted_tasks:
+        activated = _parse_dt(task.get("DateActivated"))
+        completed = _parse_dt(task.get("DateCompleted"))
+        if not activated or not completed:
+            continue
+        duration = (completed - activated).total_seconds() / 86400
+        if duration < 0:
+            continue
+        steps.append({
+            "order": task.get("Order"),
+            "task_name": task.get("TaskName", "Unknown"),
+            "duration_days": round(duration, 1),
+        })
+    return steps
+
+
+def _aggregate_step_durations(
+    all_steps: list[list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """Aggregate per-step durations across multiple task groups and identify the bottleneck.
+
+    Groups step data by order, computes avg/median duration, marks the step with
+    the highest avg duration as the bottleneck.
+    """
+    if not all_steps:
+        return []
+
+    # Collect durations by order
+    by_order: dict[int, dict[str, Any]] = {}
+    for group_steps in all_steps:
+        for step in group_steps:
+            order = step["order"]
+            if order not in by_order:
+                by_order[order] = {
+                    "order": order,
+                    "task_name": step["task_name"],
+                    "durations": [],
+                }
+            by_order[order]["durations"].append(step["duration_days"])
+
+    # Compute stats
+    results: list[dict[str, Any]] = []
+    for entry in sorted(by_order.values(), key=lambda x: x["order"]):
+        durations = entry["durations"]
+        results.append({
+            "order": entry["order"],
+            "task_name": entry["task_name"],
+            "avg_duration_days": round(statistics.mean(durations), 1),
+            "median_duration_days": round(statistics.median(durations), 1),
+            "is_bottleneck": False,  # set below
+        })
+
+    # Mark bottleneck
+    if results:
+        bottleneck = max(results, key=lambda x: x["avg_duration_days"])
+        bottleneck["is_bottleneck"] = True
+
+    return results

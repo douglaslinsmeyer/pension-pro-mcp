@@ -4,7 +4,11 @@ from datetime import datetime, timezone
 
 import pytest
 
-from pension_pro_mcp.tools.analytics import _compute_cycle_times
+from pension_pro_mcp.tools.analytics import (
+    _aggregate_step_durations,
+    _compute_cycle_times,
+    _compute_step_durations,
+)
 
 
 class TestComputeCycleTimes:
@@ -100,3 +104,143 @@ class TestComputeCycleTimes:
 
     def test_empty_input(self) -> None:
         assert _compute_cycle_times([]) == []
+
+
+class TestComputeStepDurations:
+    def test_computes_per_step_timing(self) -> None:
+        tasks = [
+            {
+                "Order": 1,
+                "TaskName": "Review Request",
+                "DateActivated": "2026-01-01T00:00:00Z",
+                "DateCompleted": "2026-01-02T00:00:00Z",
+            },
+            {
+                "Order": 2,
+                "TaskName": "Process Distribution",
+                "DateActivated": "2026-01-02T00:00:00Z",
+                "DateCompleted": "2026-01-05T00:00:00Z",
+            },
+            {
+                "Order": 3,
+                "TaskName": "Final Confirmation",
+                "DateActivated": "2026-01-05T00:00:00Z",
+                "DateCompleted": "2026-01-06T00:00:00Z",
+            },
+        ]
+
+        result = _compute_step_durations(tasks)
+
+        assert len(result) == 3
+        assert result[0] == {"order": 1, "task_name": "Review Request", "duration_days": 1.0}
+        assert result[1] == {"order": 2, "task_name": "Process Distribution", "duration_days": 3.0}
+        assert result[2] == {"order": 3, "task_name": "Final Confirmation", "duration_days": 1.0}
+
+    def test_skips_steps_with_missing_dates(self) -> None:
+        tasks = [
+            {
+                "Order": 1,
+                "TaskName": "Step A",
+                "DateActivated": "2026-01-01T00:00:00Z",
+                "DateCompleted": "2026-01-02T00:00:00Z",
+            },
+            {
+                "Order": 2,
+                "TaskName": "Step B",
+                "DateActivated": None,
+                "DateCompleted": "2026-01-05T00:00:00Z",
+            },
+        ]
+
+        result = _compute_step_durations(tasks)
+        assert len(result) == 1
+        assert result[0]["task_name"] == "Step A"
+
+    def test_skips_tasks_with_none_order(self) -> None:
+        tasks = [
+            {
+                "Order": 1,
+                "TaskName": "Step A",
+                "DateActivated": "2026-01-01T00:00:00Z",
+                "DateCompleted": "2026-01-02T00:00:00Z",
+            },
+            {
+                "Order": None,
+                "TaskName": "Unordered Task",
+                "DateActivated": "2026-01-01T00:00:00Z",
+                "DateCompleted": "2026-01-03T00:00:00Z",
+            },
+        ]
+
+        result = _compute_step_durations(tasks)
+        assert len(result) == 1
+        assert result[0]["task_name"] == "Step A"
+
+    def test_skips_steps_with_negative_duration(self) -> None:
+        tasks = [
+            {
+                "Order": 1,
+                "TaskName": "Step A",
+                "DateActivated": "2026-01-01T00:00:00Z",
+                "DateCompleted": "2026-01-02T00:00:00Z",
+            },
+            {
+                "Order": 2,
+                "TaskName": "Bad Data Step",
+                "DateActivated": "2026-01-05T00:00:00Z",
+                "DateCompleted": "2026-01-03T00:00:00Z",  # completed before activated
+            },
+        ]
+
+        result = _compute_step_durations(tasks)
+        assert len(result) == 1
+        assert result[0]["task_name"] == "Step A"
+
+
+class TestAggregateStepDurations:
+    def test_aggregates_across_groups_and_finds_bottleneck(self) -> None:
+        all_steps = [
+            # Group 1
+            [
+                {"order": 1, "task_name": "Review", "duration_days": 1.0},
+                {"order": 2, "task_name": "Process", "duration_days": 3.0},
+                {"order": 3, "task_name": "Confirm", "duration_days": 1.0},
+            ],
+            # Group 2
+            [
+                {"order": 1, "task_name": "Review", "duration_days": 2.0},
+                {"order": 2, "task_name": "Process", "duration_days": 4.0},
+                {"order": 3, "task_name": "Confirm", "duration_days": 0.5},
+            ],
+        ]
+
+        result = _aggregate_step_durations(all_steps)
+
+        assert len(result) == 3
+        assert result[0]["order"] == 1
+        assert result[0]["task_name"] == "Review"
+        assert result[0]["avg_duration_days"] == 1.5  # (1 + 2) / 2
+        assert result[0]["median_duration_days"] == 1.5
+        assert result[0]["is_bottleneck"] is False
+
+        assert result[1]["order"] == 2
+        assert result[1]["task_name"] == "Process"
+        assert result[1]["avg_duration_days"] == 3.5  # (3 + 4) / 2
+        assert result[1]["is_bottleneck"] is True  # highest avg
+
+        assert result[2]["order"] == 3
+        assert result[2]["is_bottleneck"] is False
+
+    def test_empty_input(self) -> None:
+        assert _aggregate_step_durations([]) == []
+
+    def test_single_group(self) -> None:
+        all_steps = [
+            [
+                {"order": 1, "task_name": "Only Step", "duration_days": 5.0},
+            ],
+        ]
+        result = _aggregate_step_durations(all_steps)
+        assert len(result) == 1
+        assert result[0]["is_bottleneck"] is True
+        assert result[0]["avg_duration_days"] == 5.0
