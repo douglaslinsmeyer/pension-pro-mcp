@@ -82,6 +82,7 @@ class TestComputeWorkloadStats:
         result = _compute_workload_stats(active_tasks, members)
         alice = next(m for m in result["members"] if m["contact_id"] == 1)
         assert alice["workload"]["active_task_count"] == 2
+        assert len(alice["workload"]["tasks"]) == 2
         bob = next(m for m in result["members"] if m["contact_id"] == 2)
         assert bob["workload"]["active_task_count"] == 0
         assert result["aggregate"]["total_active"] == 3
@@ -220,6 +221,8 @@ class TestComputeQueueHealth:
         ]
         result = _compute_queue_health(active_tasks, [], days_back=30, now=now)
         assert result["overdue_count"] == 1
+        assert result["overdue_tasks"][0]["task_id"] == 10
+        assert result["overdue_tasks"][0]["project"] == "Proj A"
         assert len(result["overdue_by_type"]) == 1
         assert result["overdue_by_type"][0]["task_name"] == "Slow Task"
         assert result["overdue_by_type"][0]["count"] == 1
@@ -234,6 +237,7 @@ class TestComputeQueueHealth:
         assert result["queue_growing"] is False
         assert result["oldest_active_task_age_days"] == 0
         assert result["overdue_count"] == 0
+        assert result["overdue_tasks"] == []
         assert result["overdue_by_type"] == []
 
 
@@ -273,14 +277,21 @@ class TestGetWorktrayMemberStats:
 
         assert result["worktray_id"] == 100
         assert result["period_days"] == 30
-        assert len(result["members"]) == 2
-        alice = next(m for m in result["members"] if m["contact_id"] == 500)
+        assert result["member_count"] == 2
+        assert len(result["top_members"]) == 2
+        alice = next(m for m in result["top_members"] if m["contact_id"] == 500)
         assert alice["name"] == "Alice Smith"
         assert alice["workload"]["active_task_count"] == 1
         assert alice["performance"]["tasks_completed"] == 1
+        assert "task_type_breakdown" not in alice["performance"]  # stripped in compact
+        assert "tasks" not in alice["workload"]  # stripped in compact
         assert result["aggregate"]["workload"]["total_active"] == 1
         assert result["aggregate"]["performance"]["total_completed"] == 1
         assert "throughput_per_day" in result["aggregate"]["queue_health"]
+        assert "overdue_tasks" not in result["aggregate"]["queue_health"]  # stripped in compact
+        assert "overdue_by_type" in result["aggregate"]["queue_health"]
+        assert "full_results" in result
+        assert "resource_uri" in result
 
     @respx.mock
     @pytest.mark.asyncio
@@ -294,7 +305,8 @@ class TestGetWorktrayMemberStats:
 
         result = await get_worktray_member_stats(client, worktray_id=100, days_back=30)
 
-        assert result["members"] == []
+        assert result["top_members"] == []
+        assert result["member_count"] == 0
         assert result["aggregate"]["workload"]["total_active"] == 0
         assert result["aggregate"]["performance"]["total_completed"] == 0
         assert result["aggregate"]["queue_health"]["throughput_per_day"] == 0.0

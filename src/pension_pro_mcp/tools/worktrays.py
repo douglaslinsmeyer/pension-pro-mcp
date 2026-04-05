@@ -1,11 +1,23 @@
 """Worktray tools."""
 
 import asyncio
+import json
+import os
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 from pension_pro_mcp.client import PensionProClient
+
+
+def _stats_cache_dir() -> Path:
+    """Return the platform-appropriate cache directory for stats files."""
+    if os.name == "nt":
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    else:
+        base = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+    return base / "pension-pro-mcp" / "stats"
 
 
 def _parse_dt(value: str | None) -> datetime | None:
@@ -63,6 +75,7 @@ def _compute_workload_stats(
             "role_id": m["RoleID"],
             "workload": {
                 "active_task_count": 0,
+                "tasks": [],
             },
         }
         member_map[cid] = entry
@@ -75,6 +88,11 @@ def _compute_workload_stats(
             unassigned += 1
         if assignee and assignee in member_map:
             member_map[assignee]["workload"]["active_task_count"] += 1
+            member_map[assignee]["workload"]["tasks"].append({
+                "task_name": task.get("TaskName", "Unknown"),
+                "project": _task_project_name(task),
+                "age_days": _task_age_days(task, now),
+            })
 
     return {
         "members": member_list,
@@ -212,8 +230,8 @@ def _compute_queue_health(
         if age > oldest_age:
             oldest_age = age
 
-    # Overdue tasks — summarized by task type
-    overdue_count = 0
+    # Overdue tasks — individual list and summarized by type
+    overdue_tasks: list[dict[str, Any]] = []
     overdue_by_type: dict[str, dict[str, Any]] = {}
     for task in active_tasks:
         days_to_comp = task.get("DaysToComp")
@@ -221,7 +239,13 @@ def _compute_queue_health(
             continue
         age = _task_age_days(task, now)
         if age > days_to_comp:
-            overdue_count += 1
+            overdue_tasks.append({
+                "task_id": task["Id"],
+                "task_name": task.get("TaskName", "Unknown"),
+                "project": _task_project_name(task),
+                "age_days": age,
+                "days_to_comp": days_to_comp,
+            })
             name = task.get("TaskName", "Unknown")
             if name not in overdue_by_type:
                 overdue_by_type[name] = {"count": 0, "total_age_days": 0, "total_days_over_sla": 0}
@@ -248,9 +272,33 @@ def _compute_queue_health(
         "intake_per_day": intake_per_day,
         "queue_growing": intake_per_day > throughput_per_day,
         "oldest_active_task_age_days": oldest_age,
-        "overdue_count": overdue_count,
+        "overdue_count": len(overdue_tasks),
+        "overdue_tasks": overdue_tasks,
         "overdue_by_type": overdue_summary,
     }
+
+
+def _compact_member(member: dict[str, Any]) -> dict[str, Any]:
+    """Strip task detail lists from a member entry for the compact summary."""
+    compact = {
+        "contact_id": member["contact_id"],
+        "name": member["name"],
+        "role_id": member["role_id"],
+        "workload": {"active_task_count": member["workload"]["active_task_count"]},
+        "performance": {
+            k: v for k, v in member["performance"].items()
+            if k != "task_type_breakdown"
+        },
+    }
+    return compact
+
+
+def _compact_queue_health(queue_health: dict[str, Any]) -> dict[str, Any]:
+    """Strip individual overdue_tasks list, keep overdue_by_type summary."""
+    return {k: v for k, v in queue_health.items() if k != "overdue_tasks"}
+
+
+TOP_MEMBERS = 20
 
 
 async def get_worktray_member_stats(
@@ -298,9 +346,11 @@ async def get_worktray_member_stats(
         m["performance"] = perf_by_id.get(m["contact_id"], {})
         merged_members.append(m)
 
-    return {
+    # Build full result
+    full_result: dict[str, Any] = {
         "worktray_id": worktray_id,
         "period_days": days_back,
+        "member_count": len(merged_members),
         "members": merged_members,
         "aggregate": {
             "workload": workload["aggregate"],
@@ -308,6 +358,44 @@ async def get_worktray_member_stats(
             "queue_health": queue_health,
         },
     }
+
+    # Write full result to cache file
+    cache_dir = _stats_cache_dir()
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_file = cache_dir / f"worktray-{worktray_id}-{days_back}d.json"
+    cache_file.write_text(json.dumps(full_result, indent=2))
+
+    # Build compact summary for the tool response
+    sorted_members = sorted(
+        merged_members,
+        key=lambda m: m["performance"].get("tasks_completed", 0),
+        reverse=True,
+    )
+    compact_members = [_compact_member(m) for m in sorted_members[:TOP_MEMBERS]]
+
+    return {
+        "worktray_id": worktray_id,
+        "period_days": days_back,
+        "member_count": len(merged_members),
+        "top_members": compact_members,
+        "aggregate": {
+            "workload": workload["aggregate"],
+            "performance": performance["aggregate"],
+            "queue_health": _compact_queue_health(queue_health),
+        },
+        "full_results": str(cache_file),
+        "resource_uri": f"worktray-stats://{worktray_id}",
+    }
+
+
+def read_cached_stats(worktray_id: int) -> dict[str, Any] | None:
+    """Read cached stats for a worktray, if available."""
+    cache_dir = _stats_cache_dir()
+    # Find most recent cache file for this worktray
+    matches = sorted(cache_dir.glob(f"worktray-{worktray_id}-*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not matches:
+        return None
+    return json.loads(matches[0].read_text())
 
 
 async def get_worktrays(
