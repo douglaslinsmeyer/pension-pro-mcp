@@ -132,6 +132,18 @@ class TestODataQuery:
         assert params["$skip"] == "100"
         assert params["$top"] == "50"
 
+    def test_builds_filter_with_ge(self, client: PensionProClient) -> None:
+        params = client.build_odata_params(
+            filters={"DateCompleted__ge": "2026-03-05T00:00:00Z"},
+        )
+        assert params["$filter"] == "DateCompleted ge 2026-03-05T00:00:00Z"
+
+    def test_builds_filter_with_le(self, client: PensionProClient) -> None:
+        params = client.build_odata_params(
+            filters={"DateCompleted__le": "2026-04-04T00:00:00Z"},
+        )
+        assert params["$filter"] == "DateCompleted le 2026-04-04T00:00:00Z"
+
     def test_empty_params_returns_empty_dict(self, client: PensionProClient) -> None:
         params = client.build_odata_params()
         assert params == {}
