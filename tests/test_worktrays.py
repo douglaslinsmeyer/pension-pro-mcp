@@ -17,6 +17,7 @@ from pension_pro_mcp.tools.worktrays import _compute_employee_workload
 from pension_pro_mcp.tools.worktrays import _compute_employee_throughput
 from pension_pro_mcp.tools.worktrays import _compute_employee_quality
 from pension_pro_mcp.tools.worktrays import _compact_employee_segment
+from pension_pro_mcp.tools.worktrays import get_employee_stats
 
 
 class TestGetWorktrays:
@@ -698,3 +699,148 @@ class TestCompactEmployeeSegment:
         # Identity fields preserved
         assert result["worktray_id"] == 10
         assert result["worktray_name"] == "Compliance"
+
+
+class TestGetEmployeeStats:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_not_found(self, client: PensionProClient) -> None:
+        respx.get("https://api.pensionpro.com/v2/contacts").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        result = await get_employee_stats(client, name="Nobody")
+        assert result["status"] == "not_found"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_ambiguous(self, client: PensionProClient) -> None:
+        respx.get("https://api.pensionpro.com/v2/contacts").mock(
+            return_value=httpx.Response(200, json=[
+                {
+                    "Id": 500, "FirstName": "Alice", "LastName": "Smith",
+                    "SystemEmployee": True,
+                    "Employee": {"Id": 50, "Active": True, "ContactId": 500},
+                },
+                {
+                    "Id": 501, "FirstName": "Bob", "LastName": "Smithson",
+                    "SystemEmployee": True,
+                    "Employee": {"Id": 51, "Active": True, "ContactId": 501},
+                },
+            ])
+        )
+        result = await get_employee_stats(client, name="Smith")
+        assert result["status"] == "ambiguous"
+        assert len(result["candidates"]) == 2
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_assembles_full_response(self, client: PensionProClient, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+
+        # Mock contact search
+        respx.get("https://api.pensionpro.com/v2/contacts").mock(
+            return_value=httpx.Response(200, json=[
+                {
+                    "Id": 500, "FirstName": "Alice", "LastName": "Smith",
+                    "SystemEmployee": True,
+                    "Employee": {"Id": 50, "Active": True, "ContactId": 500},
+                },
+            ])
+        )
+
+        # Mock worktray members
+        respx.get("https://api.pensionpro.com/v2/worktrayMembers").mock(
+            return_value=httpx.Response(200, json=[
+                {"Id": 1, "contactID": 500, "WorktrayID": 100, "RoleID": 1,
+                 "Contact": {"FirstName": "Alice", "LastName": "Smith"}},
+                {"Id": 2, "contactID": 500, "WorktrayID": 200, "RoleID": 2,
+                 "Contact": {"FirstName": "Alice", "LastName": "Smith"}},
+            ])
+        )
+
+        # Mock tasks — use side_effect to distinguish completed vs active
+        respx.get("https://api.pensionpro.com/v2/tasks").mock(
+            side_effect=lambda request: httpx.Response(200, json=[
+                {
+                    "Id": 10, "TaskName": "Review", "AssignedToId": 500, "TeamId": 100,
+                    "TaskActive": "2026-04-01T00:00:00Z", "DateAdded": "2026-03-28T00:00:00Z",
+                    "DateCompleted": None, "AcknowledgeDate": None,
+                    "DaysToComp": 5, "Rejections": 0, "Rejected": False,
+                    "TaskGroup": {"Name": "G1", "Project": {"Name": "Annual Val", "Id": 50}},
+                },
+            ]) if "null" in str(request.url) else httpx.Response(200, json=[
+                {
+                    "Id": 20, "TaskName": "Review", "AssignedToId": 500, "TeamId": 100,
+                    "TaskActive": "2026-03-10T00:00:00Z", "DateAdded": "2026-03-08T00:00:00Z",
+                    "DateCompleted": "2026-03-11T12:00:00Z", "AcknowledgeDate": "2026-03-10T01:00:00Z",
+                    "DaysToComp": 5, "Rejections": 0, "Rejected": False,
+                    "TaskGroup": {"Name": "G1", "Project": {"Name": "Annual Val", "Id": 50}},
+                },
+                {
+                    "Id": 21, "TaskName": "Filing", "AssignedToId": 500, "TeamId": 200,
+                    "TaskActive": "2026-03-15T00:00:00Z", "DateAdded": "2026-03-14T00:00:00Z",
+                    "DateCompleted": "2026-03-16T00:00:00Z", "AcknowledgeDate": None,
+                    "DaysToComp": 3, "Rejections": 1, "Rejected": True,
+                    "TaskGroup": {"Name": "G2", "Project": {"Name": "5500 Filing", "Id": 51}},
+                },
+            ])
+        )
+
+        result = await get_employee_stats(client, name="Smith", days_back=30)
+
+        assert result["employee"]["contact_id"] == 500
+        assert result["employee"]["name"] == "Alice Smith"
+        assert result["days_back"] == 30
+        assert len(result["worktray_segments"]) == 2
+
+        # Find worktray 100 segment (has 1 completed, 1 active)
+        wt100 = next(s for s in result["worktray_segments"] if s["worktray_id"] == 100)
+        assert wt100["workload"]["active_task_count"] == 1
+        assert wt100["throughput"]["tasks_completed"] == 1
+        # Compact: no task_type_breakdown or by_project
+        assert "task_type_breakdown" not in wt100["throughput"]
+        assert "by_project" not in wt100["throughput"]
+        assert "tasks" not in wt100["workload"]
+
+        # Find worktray 200 segment (has 1 completed with bounce-back, 0 active)
+        wt200 = next(s for s in result["worktray_segments"] if s["worktray_id"] == 200)
+        assert wt200["throughput"]["tasks_completed"] == 1
+        assert wt200["quality"]["bounce_back_count"] == 1
+        assert wt200["quality"]["total_rejections"] == 1
+
+        # Aggregate
+        assert result["aggregate"]["throughput"]["tasks_completed"] == 2
+        assert result["aggregate"]["workload"]["active_task_count"] == 1
+        assert result["aggregate"]["quality"]["bounce_back_count"] == 1
+
+        # Cache and resource
+        assert "resource_uri" in result
+        assert result["resource_uri"] == "employee-stats://500"
+        assert "cache_path" in result
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_no_worktray_memberships(self, client: PensionProClient, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+
+        respx.get("https://api.pensionpro.com/v2/contacts").mock(
+            return_value=httpx.Response(200, json=[
+                {
+                    "Id": 500, "FirstName": "Alice", "LastName": "Smith",
+                    "SystemEmployee": True,
+                    "Employee": {"Id": 50, "Active": True, "ContactId": 500},
+                },
+            ])
+        )
+        respx.get("https://api.pensionpro.com/v2/worktrayMembers").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        respx.get("https://api.pensionpro.com/v2/tasks").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+
+        result = await get_employee_stats(client, name="Smith", days_back=30)
+        assert result["employee"]["contact_id"] == 500
+        assert result["worktray_segments"] == []
+        assert result["aggregate"]["throughput"]["tasks_completed"] == 0
+        assert result["aggregate"]["workload"]["active_task_count"] == 0

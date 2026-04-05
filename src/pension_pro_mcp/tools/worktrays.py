@@ -513,6 +513,142 @@ def _compact_employee_segment(segment: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+async def get_employee_stats(
+    client: PensionProClient,
+    name: str,
+    days_back: int = 30,
+) -> dict[str, Any]:
+    """Get per-employee performance analysis across all worktrays, segmented by worktray."""
+    # Step 1: Resolve employee
+    resolution = await _resolve_employee(client, name)
+    if resolution["status"] != "found":
+        return resolution
+
+    contact_id = resolution["contact_id"]
+    employee_name = resolution["name"]
+
+    # Step 2: Fetch memberships and tasks in parallel
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
+    cutoff_iso = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    memberships, completed_tasks, active_tasks = await asyncio.gather(
+        client.get_list(
+            "/worktrayMembers",
+            filters={"contactID": str(contact_id)},
+            expand=["Contact"],
+            top=1000,
+            max_total=1000,
+        ),
+        client.get_list(
+            "/tasks",
+            filters={"AssignedToId": str(contact_id), "DateCompleted__ge": cutoff_iso},
+            expand=["AssignedTo", "TaskGroup($expand=Project)"],
+            top=1000,
+            max_total=10000,
+        ),
+        client.get_list(
+            "/tasks",
+            filters={"AssignedToId": str(contact_id), "DateCompleted": "null"},
+            expand=["AssignedTo", "TaskGroup($expand=Project)"],
+            top=1000,
+            max_total=10000,
+        ),
+    )
+
+    # Step 3: Group tasks by TeamId (worktray)
+    worktray_ids = {m["WorktrayID"] for m in memberships if m.get("WorktrayID")}
+
+    completed_by_wt: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for task in completed_tasks:
+        team_id = task.get("TeamId")
+        if team_id is not None:
+            completed_by_wt[team_id].append(task)
+
+    active_by_wt: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for task in active_tasks:
+        team_id = task.get("TeamId")
+        if team_id is not None:
+            active_by_wt[team_id].append(task)
+
+    # Collect all worktray IDs the employee has activity in
+    all_wt_ids = worktray_ids | set(completed_by_wt.keys()) | set(active_by_wt.keys())
+
+    # Build worktray name lookup from memberships
+    wt_names: dict[int, str | None] = {}
+    for m in memberships:
+        wt_id = m.get("WorktrayID")
+        if wt_id:
+            wt_names[wt_id] = None  # name not available from membership endpoint
+
+    # Step 4: Compute per-worktray segments
+    segments: list[dict[str, Any]] = []
+    for wt_id in sorted(all_wt_ids):
+        wt_completed = completed_by_wt.get(wt_id, [])
+        wt_active = active_by_wt.get(wt_id, [])
+
+        segment: dict[str, Any] = {
+            "worktray_id": wt_id,
+            "worktray_name": wt_names.get(wt_id),
+            "workload": _compute_employee_workload(wt_active),
+            "throughput": _compute_employee_throughput(wt_completed, days_back),
+            "quality": _compute_employee_quality(wt_completed),
+        }
+        segments.append(segment)
+
+    # Step 5: Compute aggregate
+    aggregate = {
+        "workload": _compute_employee_workload(active_tasks),
+        "throughput": _compute_employee_throughput(completed_tasks, days_back),
+        "quality": _compute_employee_quality(completed_tasks),
+    }
+
+    # Step 6: Build full result and cache
+    full_result: dict[str, Any] = {
+        "employee": {"contact_id": contact_id, "name": employee_name},
+        "days_back": days_back,
+        "worktray_segments": segments,
+        "aggregate": aggregate,
+    }
+
+    cache_dir = _stats_cache_dir()
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_file = cache_dir / f"employee-{contact_id}-{days_back}d.json"
+    cache_file.write_text(json.dumps(full_result, indent=2))
+
+    # Step 7: Return compact summary
+    compact_segments = [_compact_employee_segment(s) for s in segments]
+    compact_aggregate = {
+        "workload": {k: v for k, v in aggregate["workload"].items() if k != "tasks"},
+        "throughput": {
+            k: v for k, v in aggregate["throughput"].items()
+            if k not in ("task_type_breakdown", "by_project")
+        },
+        "quality": aggregate["quality"],
+    }
+
+    return {
+        "employee": {"contact_id": contact_id, "name": employee_name},
+        "days_back": days_back,
+        "worktray_segments": compact_segments,
+        "aggregate": compact_aggregate,
+        "resource_uri": f"employee-stats://{contact_id}",
+        "cache_path": str(cache_file),
+    }
+
+
+def read_cached_employee_stats(contact_id: int) -> dict[str, Any] | None:
+    """Read cached stats for an employee, if available."""
+    cache_dir = _stats_cache_dir()
+    matches = sorted(
+        cache_dir.glob(f"employee-{contact_id}-*.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if not matches:
+        return None
+    return json.loads(matches[0].read_text())
+
+
 def _compact_member(member: dict[str, Any]) -> dict[str, Any]:
     """Strip task detail lists from a member entry for the compact summary."""
     compact = {
