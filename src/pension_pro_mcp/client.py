@@ -1,9 +1,41 @@
 """PensionPro API client."""
 
+import asyncio
 import os
+import time
 from typing import Any
 
 import httpx
+
+
+class RateLimiter:
+    """Proactive rate limiter using API response headers."""
+
+    WINDOW_SECONDS = 60.0
+
+    def __init__(self) -> None:
+        self._limit: int = 100
+        self._remaining: int = 100
+        self._window_start: float = time.monotonic()
+        self._lock = asyncio.Lock()
+
+    def update(self, limit: int, remaining: int) -> None:
+        """Update rate limit state from response headers."""
+        if remaining > self._remaining or remaining == limit:
+            self._window_start = time.monotonic()
+        self._limit = limit
+        self._remaining = remaining
+
+    async def wait_if_needed(self) -> None:
+        """Sleep if remaining quota is low."""
+        async with self._lock:
+            if self._remaining <= 0:
+                elapsed = time.monotonic() - self._window_start
+                delay = max(self.WINDOW_SECONDS - elapsed, 1.0)
+                await asyncio.sleep(delay)
+            elif self._remaining < self._limit * 0.1:
+                delay = self.WINDOW_SECONDS / self._remaining
+                await asyncio.sleep(delay)
 
 
 class PensionProError(Exception):
@@ -87,6 +119,12 @@ class PensionProClient:
                 if key.endswith("__contains"):
                     field = key[: -len("__contains")]
                     clauses.append(f"contains({field}, '{escaped}')")
+                elif key.endswith("__gt"):
+                    field = key[: -len("__gt")]
+                    clauses.append(f'{field} gt "{escaped}"')
+                elif key.endswith("__lt"):
+                    field = key[: -len("__lt")]
+                    clauses.append(f'{field} lt "{escaped}"')
                 elif key.endswith("__ge"):
                     field = key[: -len("__ge")]
                     clauses.append(f"{field} ge '{escaped}'")

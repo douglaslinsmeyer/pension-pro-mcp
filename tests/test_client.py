@@ -1,10 +1,13 @@
 """Tests for the PensionPro API client."""
 
+import asyncio
+import time
+
 import pytest
 import respx
 import httpx
 
-from pension_pro_mcp.client import PensionProClient, PensionProError
+from pension_pro_mcp.client import PensionProClient, PensionProError, RateLimiter
 
 
 class TestClientInit:
@@ -144,6 +147,18 @@ class TestODataQuery:
         )
         assert params["$filter"] == "DateCompleted le '2026-04-04T00:00:00Z'"
 
+    def test_builds_filter_with_gt(self, client: PensionProClient) -> None:
+        params = client.build_odata_params(
+            filters={"CompletedOn__gt": "2026-04-01T00:00:00Z"},
+        )
+        assert params["$filter"] == 'CompletedOn gt "2026-04-01T00:00:00Z"'
+
+    def test_builds_filter_with_lt(self, client: PensionProClient) -> None:
+        params = client.build_odata_params(
+            filters={"CompletedOn__lt": "2026-04-01T00:00:00Z"},
+        )
+        assert params["$filter"] == 'CompletedOn lt "2026-04-01T00:00:00Z"'
+
     def test_empty_params_returns_empty_dict(self, client: PensionProClient) -> None:
         params = client.build_odata_params()
         assert params == {}
@@ -196,3 +211,65 @@ class TestGetList:
         await client.get_list("/plans", filters={"Name__contains": "Acme"}, top=50)
         request_url = str(route.calls[0].request.url)
         assert "contains(Name" in request_url
+
+
+class TestRateLimiter:
+    @pytest.mark.asyncio
+    async def test_no_delay_when_remaining_is_healthy(self) -> None:
+        rl = RateLimiter()
+        rl.update(limit=100, remaining=80)
+        start = time.monotonic()
+        await rl.wait_if_needed()
+        elapsed = time.monotonic() - start
+        assert elapsed < 0.05
+
+    @pytest.mark.asyncio
+    async def test_delays_when_remaining_is_low(self) -> None:
+        rl = RateLimiter()
+        rl.update(limit=100, remaining=5)
+        start = time.monotonic()
+        await rl.wait_if_needed()
+        elapsed = time.monotonic() - start
+        assert elapsed >= 1.0
+
+    @pytest.mark.asyncio
+    async def test_delays_when_remaining_is_zero(self) -> None:
+        rl = RateLimiter()
+        rl.update(limit=100, remaining=0)
+        # Simulate that 55 seconds of the window have already elapsed
+        rl._window_start = time.monotonic() - 55.0
+        start = time.monotonic()
+        await rl.wait_if_needed()
+        elapsed = time.monotonic() - start
+        # Should sleep ~5 seconds (60 - 55), allow some tolerance
+        assert 4.0 <= elapsed <= 7.0
+
+    @pytest.mark.asyncio
+    async def test_window_resets_when_remaining_increases(self) -> None:
+        rl = RateLimiter()
+        rl.update(limit=100, remaining=50)
+        old_window = rl._window_start
+        # Simulate time passing
+        rl._window_start -= 30.0
+        old_window = rl._window_start
+        # remaining jumps up — new window detected
+        rl.update(limit=100, remaining=90)
+        assert rl._window_start > old_window
+
+    @pytest.mark.asyncio
+    async def test_window_does_not_reset_when_remaining_decreases(self) -> None:
+        rl = RateLimiter()
+        rl.update(limit=100, remaining=50)
+        rl._window_start -= 30.0
+        old_window = rl._window_start
+        rl.update(limit=100, remaining=40)
+        assert rl._window_start == old_window
+
+    @pytest.mark.asyncio
+    async def test_defaults_allow_requests_before_first_response(self) -> None:
+        rl = RateLimiter()
+        # No update() called yet — should not delay
+        start = time.monotonic()
+        await rl.wait_if_needed()
+        elapsed = time.monotonic() - start
+        assert elapsed < 0.05
