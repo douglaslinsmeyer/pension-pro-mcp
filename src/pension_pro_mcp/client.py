@@ -89,21 +89,25 @@ class PensionProClient:
 
     async def get(self, endpoint: str, params: dict[str, str] | None = None) -> Any:
         """Send a GET request."""
+        await self._rate_limiter.wait_if_needed()
         response = await self._http.get(endpoint, params=params)
         return await self._handle_response(response, endpoint)
 
     async def post(self, endpoint: str, data: dict[str, Any] | None = None) -> Any:
         """Send a POST request with a JSON body."""
+        await self._rate_limiter.wait_if_needed()
         response = await self._http.post(endpoint, json=data)
         return await self._handle_response(response, endpoint)
 
     async def put(self, endpoint: str, data: dict[str, Any] | None = None) -> Any:
         """Send a PUT request with an optional JSON body."""
+        await self._rate_limiter.wait_if_needed()
         response = await self._http.put(endpoint, json=data)
         return await self._handle_response(response, endpoint)
 
     async def delete(self, endpoint: str) -> Any:
         """Send a DELETE request."""
+        await self._rate_limiter.wait_if_needed()
         response = await self._http.delete(endpoint)
         return await self._handle_response(response, endpoint)
 

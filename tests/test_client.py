@@ -297,3 +297,40 @@ class TestRateLimiterIntegration:
         await client.get("/plans/1")
         assert client._rate_limiter._remaining == 42
         assert client._rate_limiter._limit == 300
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_waits_before_request(self, client: PensionProClient) -> None:
+        """Verify that get() calls wait_if_needed before sending."""
+        wait_called = False
+        original_wait = client._rate_limiter.wait_if_needed
+
+        async def tracking_wait() -> None:
+            nonlocal wait_called
+            wait_called = True
+            await original_wait()
+
+        client._rate_limiter.wait_if_needed = tracking_wait
+
+        respx.get("https://api.pensionpro.com/v2/plans/1").mock(
+            return_value=httpx.Response(200, json={"Id": 1})
+        )
+        await client.get("/plans/1")
+        assert wait_called
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_updates_rate_limiter_on_error_response(self, client: PensionProClient) -> None:
+        respx.get("https://api.pensionpro.com/v2/plans/999").mock(
+            return_value=httpx.Response(
+                404,
+                json={"Message": "Not found"},
+                headers={
+                    "x-ratelimit-limit": "300",
+                    "x-ratelimit-remaining": "10",
+                },
+            )
+        )
+        with pytest.raises(PensionProError):
+            await client.get("/plans/999")
+        assert client._rate_limiter._remaining == 10
