@@ -224,32 +224,37 @@ class TestRateLimiter:
         assert elapsed < 0.05
 
     @pytest.mark.asyncio
-    async def test_delays_when_remaining_is_low(self) -> None:
+    async def test_delays_when_remaining_is_low(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        slept: list[float] = []
+
+        async def fake_sleep(delay: float) -> None:
+            slept.append(delay)
+
+        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
         rl = RateLimiter()
         rl.update(limit=100, remaining=5)
-        start = time.monotonic()
         await rl.wait_if_needed()
-        elapsed = time.monotonic() - start
-        assert elapsed >= 1.0
+        assert slept == [12.0]
 
     @pytest.mark.asyncio
-    async def test_delays_when_remaining_is_zero(self) -> None:
+    async def test_delays_when_remaining_is_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        slept: list[float] = []
+
+        async def fake_sleep(delay: float) -> None:
+            slept.append(delay)
+
+        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
         rl = RateLimiter()
         rl.update(limit=100, remaining=0)
-        # Simulate that 55 seconds of the window have already elapsed
         rl._window_start = time.monotonic() - 55.0
-        start = time.monotonic()
         await rl.wait_if_needed()
-        elapsed = time.monotonic() - start
-        # Should sleep ~5 seconds (60 - 55), allow some tolerance
-        assert 4.0 <= elapsed <= 7.0
+        assert len(slept) == 1
+        assert 4.0 <= slept[0] <= 6.0
 
     @pytest.mark.asyncio
     async def test_window_resets_when_remaining_increases(self) -> None:
         rl = RateLimiter()
         rl.update(limit=100, remaining=50)
-        old_window = rl._window_start
-        # Simulate time passing
         rl._window_start -= 30.0
         old_window = rl._window_start
         # remaining jumps up — new window detected
