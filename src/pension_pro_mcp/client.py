@@ -65,6 +65,7 @@ class PensionProClient:
             headers={"ApiKey": api_key, "Username": username},
             timeout=30.0,
         )
+        self._rate_limiter = RateLimiter()
 
     async def close(self) -> None:
         """Close the underlying HTTP client."""
@@ -72,6 +73,11 @@ class PensionProClient:
 
     async def _handle_response(self, response: httpx.Response, endpoint: str) -> Any:
         """Check response status and return parsed JSON."""
+        limit = response.headers.get("x-ratelimit-limit")
+        remaining = response.headers.get("x-ratelimit-remaining")
+        if limit is not None and remaining is not None:
+            self._rate_limiter.update(int(limit), int(remaining))
+
         if response.status_code >= 400:
             try:
                 body = response.json()

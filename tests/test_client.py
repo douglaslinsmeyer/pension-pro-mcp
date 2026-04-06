@@ -278,3 +278,22 @@ class TestRateLimiter:
         await rl.wait_if_needed()
         elapsed = time.monotonic() - start
         assert elapsed < 0.05
+
+
+class TestRateLimiterIntegration:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_handle_response_updates_rate_limiter(self, client: PensionProClient) -> None:
+        respx.get("https://api.pensionpro.com/v2/plans/1").mock(
+            return_value=httpx.Response(
+                200,
+                json={"Id": 1},
+                headers={
+                    "x-ratelimit-limit": "300",
+                    "x-ratelimit-remaining": "42",
+                },
+            )
+        )
+        await client.get("/plans/1")
+        assert client._rate_limiter._remaining == 42
+        assert client._rate_limiter._limit == 300
