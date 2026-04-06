@@ -351,6 +351,21 @@ class TestGetTaskGroupCycleTimes:
 
     @respx.mock
     @pytest.mark.asyncio
+    async def test_sends_completed_on_gt_filter(self, client: PensionProClient) -> None:
+        from urllib.parse import unquote
+
+        route = respx.get("https://api.pensionpro.com/v2/projects").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+
+        await get_task_group_cycle_times(client, days_back=30)
+
+        assert route.called
+        url = unquote(str(route.calls[0].request.url))
+        assert 'CompletedOn gt "' in url
+
+    @respx.mock
+    @pytest.mark.asyncio
     async def test_applies_plan_and_template_filters(self, client: PensionProClient) -> None:
         from urllib.parse import unquote
 

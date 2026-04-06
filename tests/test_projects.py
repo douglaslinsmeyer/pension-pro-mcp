@@ -86,11 +86,15 @@ class TestGetProjectDetails:
         respx.get("https://api.pensionpro.com/v2/projects/1/notes").mock(
             return_value=httpx.Response(200, json=[{"Id": 30, "NoteText": "hello"}])
         )
+        respx.get("https://api.pensionpro.com/v2/projects/1/projectfiles").mock(
+            return_value=httpx.Response(200, json=[{"Id": 40, "FileName": "doc.pdf"}])
+        )
         result = await get_project_details(client, project_id=1)
         assert result["project"]["Id"] == 1
         assert len(result["task_groups"]) == 1
         assert len(result["tasks"]) == 1
         assert result["notes"][0]["NoteText"] == "hello"
+        assert result["project_files"][0]["FileName"] == "doc.pdf"
 
 
 class TestCompleteTask:
